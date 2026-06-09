@@ -1,6 +1,4 @@
 import { ArrowRight, BookOpen, Braces, Plug, Zap, ShieldCheck, ListChecks, Webhook, Radio, FileText } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 function Logo({ size = 28 }: { size?: number }) {
   return (
