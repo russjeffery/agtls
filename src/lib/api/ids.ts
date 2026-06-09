@@ -5,8 +5,8 @@ const prefixes = {
   apiKey: "agt",
   taskList: "tsl",
   task: "tsk",
-  webhookEndpoint: "whe",
-  webhookEvent: "wev",
+  webhookEndpoint: "wh",
+  webhookEvent: "whe",
 } as const;
 
 type Prefix = keyof typeof prefixes;

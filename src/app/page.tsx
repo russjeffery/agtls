@@ -15,10 +15,10 @@ export default function Home() {
         {/* Tools */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[
-            { name: "Task Lists", path: "/api/v1/task-lists", desc: "Create and manage task queues agents can read and update.", badge: "live" },
-            { name: "Webhook Catcher", path: "/api/v1/webhook-endpoints", desc: "Receive, store, and inspect inbound webhooks.", badge: "live" },
-            { name: "Pub/Sub", path: "/api/v1/channels", desc: "Publish messages and subscribe via webhook or poll.", badge: "soon" },
-            { name: "Gist", path: "/api/v1/gists", desc: "Store and retrieve text blobs with a key.", badge: "soon" },
+            { name: "Task Lists", path: "/api/tasks", desc: "Create and manage task queues agents can read and update.", badge: "live" },
+            { name: "Webhook Catcher", path: "/api/webhooks", desc: "Receive, store, and inspect inbound webhooks.", badge: "live" },
+            { name: "Pub/Sub", path: "/api/channels", desc: "Publish messages and subscribe via webhook or poll.", badge: "soon" },
+            { name: "Gist", path: "/api/gists", desc: "Store and retrieve text blobs with a key.", badge: "soon" },
           ].map((tool) => (
             <div
               key={tool.name}

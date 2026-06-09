@@ -104,7 +104,7 @@ export function webhookTools(server: McpServer): void {
     "Get a single webhook endpoint by ID, including the count of stored events.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The webhook endpoint ID (e.g. whe_...)."),
+      id: z.string().describe("The webhook endpoint ID (e.g. wh_...)."),
     },
     async ({ api_key, id }) => {
       let auth;
@@ -369,7 +369,7 @@ export function webhookTools(server: McpServer): void {
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
       endpoint_id: z.string().describe("The webhook endpoint ID."),
-      event_id: z.string().describe("The webhook event ID (e.g. wev_...)."),
+      event_id: z.string().describe("The webhook event ID (e.g. whe_...)."),
     },
     async ({ api_key, endpoint_id, event_id }) => {
       let auth;

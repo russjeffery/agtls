@@ -73,7 +73,7 @@ export function serializeWebhookEndpoint(
     project_id: row.projectId,
     name: row.name,
     description: row.description,
-    url: `${appUrl}/api/v1/catch/${row.id}`,
+    url: `${appUrl}/api/catch/${row.id}`,
     max_events: row.maxEvents ?? 100,
     event_count: eventCount ?? undefined,
     created_at: toUnix(row.createdAt),
