@@ -28,7 +28,6 @@ import {
   importJWK,
   SignJWT,
 } from "jose";
-import type { KeyLike } from "jose";
 import { randomUUID } from "crypto";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -75,11 +74,11 @@ interface StoredKeys {
   publicKeyJwk: Record<string, unknown>;
 }
 
-async function loadOrGenerateKeys(): Promise<{ privateKey: KeyLike; publicKey: KeyLike; publicKeyJwk: Record<string, unknown> }> {
+async function loadOrGenerateKeys(): Promise<{ privateKey: CryptoKey; publicKey: CryptoKey; publicKeyJwk: Record<string, unknown> }> {
   if (existsSync(KEYS_FILE)) {
     const stored: StoredKeys = JSON.parse(await readFile(KEYS_FILE, "utf-8"));
-    const privateKey = (await importJWK(stored.privateKeyJwk as Parameters<typeof importJWK>[0], "ES256")) as KeyLike;
-    const publicKey = (await importJWK(stored.publicKeyJwk as Parameters<typeof importJWK>[0], "ES256")) as KeyLike;
+    const privateKey = (await importJWK(stored.privateKeyJwk as Parameters<typeof importJWK>[0], "ES256")) as CryptoKey;
+    const publicKey = (await importJWK(stored.publicKeyJwk as Parameters<typeof importJWK>[0], "ES256")) as CryptoKey;
     return { privateKey, publicKey, publicKeyJwk: stored.publicKeyJwk };
   }
 
@@ -88,7 +87,7 @@ async function loadOrGenerateKeys(): Promise<{ privateKey: KeyLike; publicKey: K
   const privateKeyJwk = { ...(await exportJWK(privateKey)), kid: KID, alg: "ES256" };
   const publicKeyJwk = { ...(await exportJWK(publicKey)), kid: KID, alg: "ES256", use: "sig" };
   await writeFile(KEYS_FILE, JSON.stringify({ privateKeyJwk, publicKeyJwk }, null, 2));
-  return { privateKey: privateKey as KeyLike, publicKey: publicKey as KeyLike, publicKeyJwk };
+  return { privateKey, publicKey, publicKeyJwk };
 }
 
 // ─── JWKS HTTP server ──────────────────────────────────────────────────────────
@@ -134,7 +133,7 @@ async function ensureEnvConfig(): Promise<boolean> {
 
 // ─── JWT helpers ───────────────────────────────────────────────────────────────
 
-async function mintIdJag(privateKey: KeyLike): Promise<string> {
+async function mintIdJag(privateKey: CryptoKey): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   return new SignJWT({
     sub: SUB,
@@ -153,7 +152,7 @@ async function mintIdJag(privateKey: KeyLike): Promise<string> {
     .sign(privateKey);
 }
 
-async function mintLogoutToken(privateKey: KeyLike): Promise<string> {
+async function mintLogoutToken(privateKey: CryptoKey): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const REVOKED_EVENT = "https://schemas.workos.com/events/agent/auth/identity/assertion/revoked";
   return new SignJWT({ events: { [REVOKED_EVENT]: {} } })
