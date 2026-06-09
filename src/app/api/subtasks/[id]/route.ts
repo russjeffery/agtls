@@ -2,31 +2,33 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { taskList } from "@/lib/db/schema";
+import { subtask } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
 import { ok, noContent, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
-import { serializeTaskList } from "@/lib/api/serialize";
+import { serializeSubtask } from "@/lib/api/serialize";
 import { wantsHtml } from "@/lib/api/accepts";
 import { htmlResponse } from "@/lib/api/html";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 const patchSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  title: z.string().min(1).max(500).optional(),
   description: z.string().nullable().optional(),
+  status: z
+    .enum(["todo", "in_progress", "done", "cancelled"])
+    .optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  assignee: z.string().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  due_at: z.number().int().nullable().optional(),
+  task_id: z.string().nullable().optional(),
 });
 
-/**
- * Check whether the caller is allowed to access this task list.
- * - Row doesn't exist: returns { row: null, allowed: false }
- * - Row is public (projectId=null): anyone can access
- * - Row has projectId: caller must be authenticated with matching projectId
- */
 function checkOwnership(
-  row: typeof taskList.$inferSelect | undefined,
+  row: typeof subtask.$inferSelect | undefined,
   authProjectId: string | null | undefined
-): { row: typeof taskList.$inferSelect; allowed: boolean } | { row: null; allowed: false } {
+): { row: typeof subtask.$inferSelect; allowed: boolean } | { row: null; allowed: false } {
   if (!row) return { row: null, allowed: false };
   if (row.projectId === null) return { row, allowed: true };
   if (row.projectId === authProjectId) return { row, allowed: true };
@@ -48,47 +50,47 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   const [row] = await db
     .select()
-    .from(taskList)
-    .where(eq(taskList.id, id))
+    .from(subtask)
+    .where(eq(subtask.id, id))
     .limit(1);
 
   const { row: found, allowed } = checkOwnership(row, auth?.projectId);
-  if (!found) return errorResponse(errors.notFound("task list", id), 404);
+  if (!found) return errorResponse(errors.notFound("subtask", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 
-  const serialized = serializeTaskList(found);
+  const serialized = serializeSubtask(found);
+  const taskId = found.taskId;
 
   if (wantsHtml(request)) {
     return htmlResponse(
       {
         title: found.id,
-        objectType: "task_list",
+        objectType: "subtask",
         breadcrumb: [
           { label: "API", href: "/" },
-          { label: "task-lists", href: "/api/task-lists" },
+          taskId
+            ? { label: taskId, href: `/api/tasks/${taskId}` }
+            : { label: "subtasks", href: "/api/subtasks" },
+          ...(taskId ? [{ label: "subtasks", href: `/api/tasks/${taskId}/subtasks` }] : []),
           { label: found.id },
         ],
         resource: serialized,
         apiRef: [
           {
             method: "GET",
-            path: `/api/task-lists/${found.id}`,
-            description: "Get this task list.",
+            path: `/api/subtasks/${found.id}`,
+            description: "Get this subtask.",
           },
           {
             method: "PATCH",
-            path: `/api/task-lists/${found.id}`,
-            description: "Update name or description.",
+            path: `/api/subtasks/${found.id}`,
+            description:
+              "Update title, status, priority, assignee, description, metadata, due_at.",
           },
           {
             method: "DELETE",
-            path: `/api/task-lists/${found.id}`,
-            description: "Delete this task list permanently.",
-          },
-          {
-            method: "GET",
-            path: `/api/task-lists/${found.id}/tasks`,
-            description: "List tasks in this list.",
+            path: `/api/subtasks/${found.id}`,
+            description: "Delete this subtask permanently.",
           },
         ],
       },
@@ -114,12 +116,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   const [row] = await db
     .select()
-    .from(taskList)
-    .where(eq(taskList.id, id))
+    .from(subtask)
+    .where(eq(subtask.id, id))
     .limit(1);
 
   const { row: found, allowed } = checkOwnership(row, auth?.projectId);
-  if (!found) return errorResponse(errors.notFound("task list", id), 404);
+  if (!found) return errorResponse(errors.notFound("subtask", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 
   let body;
@@ -130,26 +132,45 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return errorResponse(errors.invalidParam("body", msg), 400);
   }
 
-  const updates: Partial<typeof taskList.$inferInsert> = {
-    updatedAt: new Date(),
-  };
-  if (body.name !== undefined) updates.name = body.name;
+  const now = new Date();
+  const updates: Partial<typeof subtask.$inferInsert> = { updatedAt: now };
+
+  if (body.title !== undefined) updates.title = body.title;
   if (body.description !== undefined) updates.description = body.description;
+  if (body.assignee !== undefined) updates.assignee = body.assignee;
+  if (body.metadata !== undefined) updates.metadata = body.metadata;
+  if (body.task_id !== undefined) updates.taskId = body.task_id;
+
+  if (body.due_at !== undefined) {
+    updates.dueAt = body.due_at != null ? new Date(body.due_at * 1000) : null;
+  }
+
+  if (body.priority !== undefined) updates.priority = body.priority;
+
+  if (body.status !== undefined) {
+    updates.status = body.status;
+    // Set completedAt when transitioning to done, clear when leaving
+    if (body.status === "done" && found.status !== "done") {
+      updates.completedAt = now;
+    } else if (body.status !== "done" && found.status === "done") {
+      updates.completedAt = null;
+    }
+  }
 
   const [updated] = await db
-    .update(taskList)
+    .update(subtask)
     .set(updates)
-    .where(eq(taskList.id, id))
+    .where(eq(subtask.id, id))
     .returning();
 
   if (wantsHtml(request)) {
     return Response.redirect(
-      new URL(`/api/task-lists/${updated.id}`, request.url).toString(),
+      new URL(`/api/subtasks/${updated.id}`, request.url).toString(),
       303
     );
   }
 
-  return ok(serializeTaskList(updated));
+  return ok(serializeSubtask(updated));
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
@@ -167,19 +188,19 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
   const [row] = await db
     .select()
-    .from(taskList)
-    .where(eq(taskList.id, id))
+    .from(subtask)
+    .where(eq(subtask.id, id))
     .limit(1);
 
   const { row: found, allowed } = checkOwnership(row, auth?.projectId);
-  if (!found) return errorResponse(errors.notFound("task list", id), 404);
+  if (!found) return errorResponse(errors.notFound("subtask", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 
-  await db.delete(taskList).where(eq(taskList.id, id));
+  await db.delete(subtask).where(eq(subtask.id, id));
 
   if (wantsHtml(request)) {
     return Response.redirect(
-      new URL(`/api/task-lists`, request.url).toString(),
+      new URL(`/api/subtasks`, request.url).toString(),
       303
     );
   }

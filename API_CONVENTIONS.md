@@ -20,8 +20,8 @@ Every resource route serves both HTML and JSON at the same path.
 Use `newId(type)` from `@/lib/api/ids`. Prefixes:
 - `prj_` — project
 - `agt_` — API key (full key: `agt_live_*` or `agt_test_*`)
-- `tsl_` — task list
-- `tsk_` — task
+- `tsk_` — task (container)
+- `sub_` — subtask (item within a task)
 - `wh_`  — webhook endpoint
 - `whe_` — webhook event
 

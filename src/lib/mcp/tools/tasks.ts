@@ -2,10 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { eq, and, isNull, desc, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { task, taskList } from "@/lib/db/schema";
+import { task, subtask } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
-import { serializeTask, serializeTaskList } from "@/lib/api/serialize";
+import { serializeTask, serializeSubtask } from "@/lib/api/serialize";
 import type { AuthContext } from "@/lib/api/middleware";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
@@ -65,19 +65,9 @@ export function taskTools(server: McpServer): void {
   // ── tasks_list ────────────────────────────────────────────────────────────
   server.tool(
     "tasks_list",
-    "List tasks. Supports filtering by status, priority, assignee, and list_id.",
+    "List tasks (containers for subtasks).",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      status: z
-        .enum(["todo", "in_progress", "done", "cancelled"])
-        .optional()
-        .describe("Filter by task status"),
-      priority: z
-        .enum(["low", "medium", "high", "urgent"])
-        .optional()
-        .describe("Filter by priority"),
-      assignee: z.string().optional().describe("Filter by assignee"),
-      list_id: z.string().optional().describe("Filter by task list ID"),
       limit: z.number().int().min(1).max(100).optional().describe("Number of results (1-100, default 20)"),
       after: z.string().optional().describe("Cursor for pagination (last item ID)"),
     },
@@ -95,11 +85,6 @@ export function taskTools(server: McpServer): void {
         : isNull(task.projectId);
 
       const conditions = [ownerCondition];
-
-      if (args.status) conditions.push(eq(task.status, args.status));
-      if (args.priority) conditions.push(eq(task.priority, args.priority));
-      if (args.assignee) conditions.push(eq(task.assignee, args.assignee));
-      if (args.list_id) conditions.push(eq(task.listId, args.list_id));
 
       if (args.after) {
         const [cursorRow] = await db
@@ -132,7 +117,7 @@ export function taskTools(server: McpServer): void {
   // ── tasks_get ─────────────────────────────────────────────────────────────
   server.tool(
     "tasks_get",
-    "Get a single task by ID.",
+    "Get a task by ID (tsk_...).",
     {
       api_key: z.string().optional().describe("API key for authentication"),
       id: z.string().describe("Task ID"),
@@ -163,23 +148,11 @@ export function taskTools(server: McpServer): void {
   // ── tasks_create ──────────────────────────────────────────────────────────
   server.tool(
     "tasks_create",
-    "Create a new task.",
+    "Create a new task. A task is a container for subtasks.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      title: z.string().min(1).max(500).describe("Task title"),
+      name: z.string().min(1).max(200).describe("Task name"),
       description: z.string().optional().nullable().describe("Task description"),
-      list_id: z.string().optional().nullable().describe("Task list ID to add this task to"),
-      status: z
-        .enum(["todo", "in_progress", "done", "cancelled"])
-        .optional()
-        .describe("Task status (default: todo)"),
-      priority: z
-        .enum(["low", "medium", "high", "urgent"])
-        .optional()
-        .describe("Task priority (default: medium)"),
-      assignee: z.string().optional().nullable().describe("Assignee identifier"),
-      metadata: z.record(z.string(), z.unknown()).optional().describe("Arbitrary metadata"),
-      due_at: z.number().int().optional().nullable().describe("Due date as Unix timestamp"),
     },
     async (args, extra) => {
       let auth: AuthContext | null;
@@ -187,20 +160,6 @@ export function taskTools(server: McpServer): void {
         auth = await getAuth(args.api_key, extra);
       } catch (e: unknown) {
         return mcpError(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      // Validate list if provided
-      if (args.list_id) {
-        const [listRow] = await db
-          .select()
-          .from(taskList)
-          .where(eq(taskList.id, args.list_id))
-          .limit(1);
-
-        if (!listRow) return mcpError(`No task list with ID '${args.list_id}' exists.`);
-        if (!canAccess(listRow.projectId, auth?.projectId)) {
-          return mcpError("You do not have access to this task list.");
-        }
       }
 
       const id = newId("task");
@@ -211,15 +170,8 @@ export function taskTools(server: McpServer): void {
         .values({
           id,
           projectId: auth ? auth.projectId : null,
-          listId: args.list_id ?? null,
-          title: args.title,
+          name: args.name,
           description: args.description ?? null,
-          status: args.status ?? "todo",
-          priority: args.priority ?? "medium",
-          assignee: args.assignee ?? null,
-          metadata: args.metadata ?? {},
-          dueAt: args.due_at != null ? new Date(args.due_at * 1000) : null,
-          completedAt: null,
           createdAt: now,
           updatedAt: now,
         })
@@ -232,24 +184,12 @@ export function taskTools(server: McpServer): void {
   // ── tasks_update ──────────────────────────────────────────────────────────
   server.tool(
     "tasks_update",
-    "Update a task (partial update).",
+    "Update a task's name or description.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
       id: z.string().describe("Task ID"),
-      title: z.string().min(1).max(500).optional().describe("New title"),
+      name: z.string().min(1).max(200).optional().describe("New name"),
       description: z.string().nullable().optional().describe("New description"),
-      status: z
-        .enum(["todo", "in_progress", "done", "cancelled"])
-        .optional()
-        .describe("New status"),
-      priority: z
-        .enum(["low", "medium", "high", "urgent"])
-        .optional()
-        .describe("New priority"),
-      assignee: z.string().nullable().optional().describe("New assignee"),
-      metadata: z.record(z.string(), z.unknown()).optional().describe("New metadata"),
-      due_at: z.number().int().nullable().optional().describe("New due date (Unix timestamp)"),
-      list_id: z.string().nullable().optional().describe("Move to a different task list"),
     },
     async (args, extra) => {
       let auth: AuthContext | null;
@@ -270,27 +210,11 @@ export function taskTools(server: McpServer): void {
         return mcpError("You do not have access to this resource.");
       }
 
-      const now = new Date();
-      const updates: Partial<typeof task.$inferInsert> = { updatedAt: now };
-
-      if (args.title !== undefined) updates.title = args.title;
+      const updates: Partial<typeof task.$inferInsert> = {
+        updatedAt: new Date(),
+      };
+      if (args.name !== undefined) updates.name = args.name;
       if (args.description !== undefined) updates.description = args.description;
-      if (args.assignee !== undefined) updates.assignee = args.assignee;
-      if (args.metadata !== undefined) updates.metadata = args.metadata;
-      if (args.list_id !== undefined) updates.listId = args.list_id;
-      if (args.due_at !== undefined) {
-        updates.dueAt = args.due_at != null ? new Date(args.due_at * 1000) : null;
-      }
-      if (args.priority !== undefined) updates.priority = args.priority;
-
-      if (args.status !== undefined) {
-        updates.status = args.status;
-        if (args.status === "done" && row.status !== "done") {
-          updates.completedAt = now;
-        } else if (args.status !== "done" && row.status === "done") {
-          updates.completedAt = null;
-        }
-      }
 
       const [updated] = await db
         .update(task)
@@ -305,7 +229,7 @@ export function taskTools(server: McpServer): void {
   // ── tasks_delete ──────────────────────────────────────────────────────────
   server.tool(
     "tasks_delete",
-    "Delete a task by ID.",
+    "Delete a task and all its subtasks.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
       id: z.string().describe("Task ID"),
@@ -335,12 +259,22 @@ export function taskTools(server: McpServer): void {
     }
   );
 
-  // ── task_lists_list ───────────────────────────────────────────────────────
+  // ── subtasks_list ─────────────────────────────────────────────────────────
   server.tool(
-    "task_lists_list",
-    "List task lists.",
+    "subtasks_list",
+    "List subtasks. Filter by task_id, status, priority, assignee.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
+      status: z
+        .enum(["todo", "in_progress", "done", "cancelled"])
+        .optional()
+        .describe("Filter by subtask status"),
+      priority: z
+        .enum(["low", "medium", "high", "urgent"])
+        .optional()
+        .describe("Filter by priority"),
+      assignee: z.string().optional().describe("Filter by assignee"),
+      task_id: z.string().optional().describe("Filter by task ID"),
       limit: z.number().int().min(1).max(100).optional().describe("Number of results (1-100, default 20)"),
       after: z.string().optional().describe("Cursor for pagination (last item ID)"),
     },
@@ -354,29 +288,34 @@ export function taskTools(server: McpServer): void {
 
       const limit = clampLimit(args.limit);
       const ownerCondition = auth
-        ? eq(taskList.projectId, auth.projectId)
-        : isNull(taskList.projectId);
+        ? eq(subtask.projectId, auth.projectId)
+        : isNull(subtask.projectId);
 
       const conditions = [ownerCondition];
 
+      if (args.status) conditions.push(eq(subtask.status, args.status));
+      if (args.priority) conditions.push(eq(subtask.priority, args.priority));
+      if (args.assignee) conditions.push(eq(subtask.assignee, args.assignee));
+      if (args.task_id) conditions.push(eq(subtask.taskId, args.task_id));
+
       if (args.after) {
         const [cursorRow] = await db
-          .select({ createdAt: taskList.createdAt })
-          .from(taskList)
-          .where(eq(taskList.id, args.after))
+          .select({ createdAt: subtask.createdAt })
+          .from(subtask)
+          .where(eq(subtask.id, args.after))
           .limit(1);
-        if (cursorRow) conditions.push(lt(taskList.createdAt, cursorRow.createdAt));
+        if (cursorRow) conditions.push(lt(subtask.createdAt, cursorRow.createdAt));
       }
 
       const rows = await db
         .select()
-        .from(taskList)
+        .from(subtask)
         .where(and(...conditions))
-        .orderBy(desc(taskList.createdAt))
+        .orderBy(desc(subtask.createdAt))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;
-      const data = rows.slice(0, limit).map(serializeTaskList);
+      const data = rows.slice(0, limit).map(serializeSubtask);
 
       return mcpOk({
         object: "list",
@@ -387,13 +326,13 @@ export function taskTools(server: McpServer): void {
     }
   );
 
-  // ── task_lists_get ────────────────────────────────────────────────────────
+  // ── subtasks_get ──────────────────────────────────────────────────────────
   server.tool(
-    "task_lists_get",
-    "Get a single task list by ID.",
+    "subtasks_get",
+    "Get a subtask by ID (sub_...).",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      id: z.string().describe("Task list ID"),
+      id: z.string().describe("Subtask ID"),
     },
     async (args, extra) => {
       let auth: AuthContext | null;
@@ -405,27 +344,39 @@ export function taskTools(server: McpServer): void {
 
       const [row] = await db
         .select()
-        .from(taskList)
-        .where(eq(taskList.id, args.id))
+        .from(subtask)
+        .where(eq(subtask.id, args.id))
         .limit(1);
 
-      if (!row) return mcpError(`No task list with ID '${args.id}' exists.`);
+      if (!row) return mcpError(`No subtask with ID '${args.id}' exists.`);
       if (!canAccess(row.projectId, auth?.projectId)) {
         return mcpError("You do not have access to this resource.");
       }
 
-      return mcpOk(serializeTaskList(row));
+      return mcpOk(serializeSubtask(row));
     }
   );
 
-  // ── task_lists_create ─────────────────────────────────────────────────────
+  // ── subtasks_create ───────────────────────────────────────────────────────
   server.tool(
-    "task_lists_create",
-    "Create a new task list.",
+    "subtasks_create",
+    "Create a subtask. Optionally assign to a task via task_id.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      name: z.string().min(1).max(200).describe("Task list name"),
-      description: z.string().optional().nullable().describe("Task list description"),
+      title: z.string().min(1).max(500).describe("Subtask title"),
+      description: z.string().optional().nullable().describe("Subtask description"),
+      task_id: z.string().optional().nullable().describe("Task ID to add this subtask to"),
+      status: z
+        .enum(["todo", "in_progress", "done", "cancelled"])
+        .optional()
+        .describe("Subtask status (default: todo)"),
+      priority: z
+        .enum(["low", "medium", "high", "urgent"])
+        .optional()
+        .describe("Subtask priority (default: medium)"),
+      assignee: z.string().optional().nullable().describe("Assignee identifier"),
+      metadata: z.record(z.string(), z.unknown()).optional().describe("Arbitrary metadata"),
+      due_at: z.number().int().optional().nullable().describe("Due date as Unix timestamp"),
     },
     async (args, extra) => {
       let auth: AuthContext | null;
@@ -435,34 +386,67 @@ export function taskTools(server: McpServer): void {
         return mcpError(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const id = newId("taskList");
+      // Validate task if provided
+      if (args.task_id) {
+        const [taskRow] = await db
+          .select()
+          .from(task)
+          .where(eq(task.id, args.task_id))
+          .limit(1);
+
+        if (!taskRow) return mcpError(`No task with ID '${args.task_id}' exists.`);
+        if (!canAccess(taskRow.projectId, auth?.projectId)) {
+          return mcpError("You do not have access to this task.");
+        }
+      }
+
+      const id = newId("subtask");
       const now = new Date();
 
       const [row] = await db
-        .insert(taskList)
+        .insert(subtask)
         .values({
           id,
           projectId: auth ? auth.projectId : null,
-          name: args.name,
+          taskId: args.task_id ?? null,
+          title: args.title,
           description: args.description ?? null,
+          status: args.status ?? "todo",
+          priority: args.priority ?? "medium",
+          assignee: args.assignee ?? null,
+          metadata: args.metadata ?? {},
+          dueAt: args.due_at != null ? new Date(args.due_at * 1000) : null,
+          completedAt: null,
           createdAt: now,
           updatedAt: now,
         })
         .returning();
 
-      return mcpOk(serializeTaskList(row));
+      return mcpOk(serializeSubtask(row));
     }
   );
 
-  // ── task_lists_update ─────────────────────────────────────────────────────
+  // ── subtasks_update ───────────────────────────────────────────────────────
   server.tool(
-    "task_lists_update",
-    "Update a task list (partial update).",
+    "subtasks_update",
+    "Update a subtask. Supports status, priority, title, description, assignee, metadata, due_at.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      id: z.string().describe("Task list ID"),
-      name: z.string().min(1).max(200).optional().describe("New name"),
+      id: z.string().describe("Subtask ID"),
+      title: z.string().min(1).max(500).optional().describe("New title"),
       description: z.string().nullable().optional().describe("New description"),
+      status: z
+        .enum(["todo", "in_progress", "done", "cancelled"])
+        .optional()
+        .describe("New status"),
+      priority: z
+        .enum(["low", "medium", "high", "urgent"])
+        .optional()
+        .describe("New priority"),
+      assignee: z.string().nullable().optional().describe("New assignee"),
+      metadata: z.record(z.string(), z.unknown()).optional().describe("New metadata"),
+      due_at: z.number().int().nullable().optional().describe("New due date (Unix timestamp)"),
+      task_id: z.string().nullable().optional().describe("Move to a different task"),
     },
     async (args, extra) => {
       let auth: AuthContext | null;
@@ -474,38 +458,54 @@ export function taskTools(server: McpServer): void {
 
       const [row] = await db
         .select()
-        .from(taskList)
-        .where(eq(taskList.id, args.id))
+        .from(subtask)
+        .where(eq(subtask.id, args.id))
         .limit(1);
 
-      if (!row) return mcpError(`No task list with ID '${args.id}' exists.`);
+      if (!row) return mcpError(`No subtask with ID '${args.id}' exists.`);
       if (!canAccess(row.projectId, auth?.projectId)) {
         return mcpError("You do not have access to this resource.");
       }
 
-      const updates: Partial<typeof taskList.$inferInsert> = {
-        updatedAt: new Date(),
-      };
-      if (args.name !== undefined) updates.name = args.name;
+      const now = new Date();
+      const updates: Partial<typeof subtask.$inferInsert> = { updatedAt: now };
+
+      if (args.title !== undefined) updates.title = args.title;
       if (args.description !== undefined) updates.description = args.description;
+      if (args.assignee !== undefined) updates.assignee = args.assignee;
+      if (args.metadata !== undefined) updates.metadata = args.metadata;
+      if (args.task_id !== undefined) updates.taskId = args.task_id;
+      if (args.due_at !== undefined) {
+        updates.dueAt = args.due_at != null ? new Date(args.due_at * 1000) : null;
+      }
+      if (args.priority !== undefined) updates.priority = args.priority;
+
+      if (args.status !== undefined) {
+        updates.status = args.status;
+        if (args.status === "done" && row.status !== "done") {
+          updates.completedAt = now;
+        } else if (args.status !== "done" && row.status === "done") {
+          updates.completedAt = null;
+        }
+      }
 
       const [updated] = await db
-        .update(taskList)
+        .update(subtask)
         .set(updates)
-        .where(eq(taskList.id, args.id))
+        .where(eq(subtask.id, args.id))
         .returning();
 
-      return mcpOk(serializeTaskList(updated));
+      return mcpOk(serializeSubtask(updated));
     }
   );
 
-  // ── task_lists_delete ─────────────────────────────────────────────────────
+  // ── subtasks_delete ───────────────────────────────────────────────────────
   server.tool(
-    "task_lists_delete",
-    "Delete a task list by ID.",
+    "subtasks_delete",
+    "Delete a subtask permanently.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      id: z.string().describe("Task list ID"),
+      id: z.string().describe("Subtask ID"),
     },
     async (args, extra) => {
       let auth: AuthContext | null;
@@ -517,18 +517,18 @@ export function taskTools(server: McpServer): void {
 
       const [row] = await db
         .select()
-        .from(taskList)
-        .where(eq(taskList.id, args.id))
+        .from(subtask)
+        .where(eq(subtask.id, args.id))
         .limit(1);
 
-      if (!row) return mcpError(`No task list with ID '${args.id}' exists.`);
+      if (!row) return mcpError(`No subtask with ID '${args.id}' exists.`);
       if (!canAccess(row.projectId, auth?.projectId)) {
         return mcpError("You do not have access to this resource.");
       }
 
-      await db.delete(taskList).where(eq(taskList.id, args.id));
+      await db.delete(subtask).where(eq(subtask.id, args.id));
 
-      return mcpOk({ id: args.id, object: "task_list", deleted: true });
+      return mcpOk({ id: args.id, object: "subtask", deleted: true });
     }
   );
 }

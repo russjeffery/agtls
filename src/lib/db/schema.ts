@@ -94,10 +94,10 @@ export const apiKey = pgTable("api_key", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// ─── Task Lists & Tasks ───────────────────────────────────────────────────────
+// ─── Tasks & Subtasks ────────────────────────────────────────────────────────
 
-export const taskList = pgTable("task_list", {
-  id: text("id").primaryKey(), // nanoid, prefix: tsl_
+export const task = pgTable("task", {
+  id: text("id").primaryKey(), // nanoid, prefix: tsk_
   // null = public / anonymous resource
   projectId: text("project_id").references(() => project.id, {
     onDelete: "cascade",
@@ -108,34 +108,34 @@ export const taskList = pgTable("task_list", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const taskStatus = pgEnum("task_status", [
+export const subtaskStatus = pgEnum("subtask_status", [
   "todo",
   "in_progress",
   "done",
   "cancelled",
 ]);
 
-export const taskPriority = pgEnum("task_priority", [
+export const subtaskPriority = pgEnum("subtask_priority", [
   "low",
   "medium",
   "high",
   "urgent",
 ]);
 
-export const task = pgTable("task", {
-  id: text("id").primaryKey(), // nanoid, prefix: tsk_
+export const subtask = pgTable("subtask", {
+  id: text("id").primaryKey(), // nanoid, prefix: sub_
   // null = public / anonymous resource
   projectId: text("project_id").references(() => project.id, {
     onDelete: "cascade",
   }),
-  listId: text("list_id").references(() => taskList.id, {
+  taskId: text("task_id").references(() => task.id, {
     onDelete: "cascade",
   }),
   title: text("title").notNull(),
   description: text("description"),
-  status: taskStatus("status").notNull().default("todo"),
-  priority: taskPriority("priority").notNull().default("medium"),
-  assignee: text("assignee"), // free-form: agent name, user id, etc.
+  status: subtaskStatus("status").notNull().default("todo"),
+  priority: subtaskPriority("priority").notNull().default("medium"),
+  assignee: text("assignee"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   dueAt: timestamp("due_at"),
   completedAt: timestamp("completed_at"),

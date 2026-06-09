@@ -3,8 +3,8 @@ import { nanoid } from "nanoid";
 const prefixes = {
   project: "prj",
   apiKey: "agt",
-  taskList: "tsl",
   task: "tsk",
+  subtask: "sub",
   webhookEndpoint: "wh",
   webhookEvent: "whe",
 } as const;

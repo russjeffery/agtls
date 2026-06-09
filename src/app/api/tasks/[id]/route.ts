@@ -13,18 +13,16 @@ import { htmlResponse } from "@/lib/api/html";
 type RouteContext = { params: Promise<{ id: string }> };
 
 const patchSchema = z.object({
-  title: z.string().min(1).max(500).optional(),
+  name: z.string().min(1).max(200).optional(),
   description: z.string().nullable().optional(),
-  status: z
-    .enum(["todo", "in_progress", "done", "cancelled"])
-    .optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  assignee: z.string().nullable().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  due_at: z.number().int().nullable().optional(),
-  list_id: z.string().nullable().optional(),
 });
 
+/**
+ * Check whether the caller is allowed to access this task.
+ * - Row doesn't exist: returns { row: null, allowed: false }
+ * - Row is public (projectId=null): anyone can access
+ * - Row has projectId: caller must be authenticated with matching projectId
+ */
 function checkOwnership(
   row: typeof task.$inferSelect | undefined,
   authProjectId: string | null | undefined
@@ -80,13 +78,17 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
           {
             method: "PATCH",
             path: `/api/tasks/${found.id}`,
-            description:
-              "Update title, status, priority, assignee, description, metadata, due_at.",
+            description: "Update name or description.",
           },
           {
             method: "DELETE",
             path: `/api/tasks/${found.id}`,
             description: "Delete this task permanently.",
+          },
+          {
+            method: "GET",
+            path: `/api/tasks/${found.id}/subtasks`,
+            description: "List subtasks in this task.",
           },
         ],
       },
@@ -128,30 +130,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return errorResponse(errors.invalidParam("body", msg), 400);
   }
 
-  const now = new Date();
-  const updates: Partial<typeof task.$inferInsert> = { updatedAt: now };
-
-  if (body.title !== undefined) updates.title = body.title;
+  const updates: Partial<typeof task.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (body.name !== undefined) updates.name = body.name;
   if (body.description !== undefined) updates.description = body.description;
-  if (body.assignee !== undefined) updates.assignee = body.assignee;
-  if (body.metadata !== undefined) updates.metadata = body.metadata;
-  if (body.list_id !== undefined) updates.listId = body.list_id;
-
-  if (body.due_at !== undefined) {
-    updates.dueAt = body.due_at != null ? new Date(body.due_at * 1000) : null;
-  }
-
-  if (body.priority !== undefined) updates.priority = body.priority;
-
-  if (body.status !== undefined) {
-    updates.status = body.status;
-    // Set completedAt when transitioning to done, clear when leaving
-    if (body.status === "done" && found.status !== "done") {
-      updates.completedAt = now;
-    } else if (body.status !== "done" && found.status === "done") {
-      updates.completedAt = null;
-    }
-  }
 
   const [updated] = await db
     .update(task)

@@ -2,7 +2,7 @@ import { toUnix } from "./response";
 
 // Shared serializers — keeps route files thin
 
-export function serializeTaskList(row: {
+export function serializeTask(row: {
   id: string;
   projectId: string | null;
   name: string;
@@ -12,7 +12,7 @@ export function serializeTaskList(row: {
 }) {
   return {
     id: row.id,
-    object: "task_list" as const,
+    object: "task" as const,
     project_id: row.projectId,
     name: row.name,
     description: row.description,
@@ -21,10 +21,10 @@ export function serializeTaskList(row: {
   };
 }
 
-export function serializeTask(row: {
+export function serializeSubtask(row: {
   id: string;
   projectId: string | null;
-  listId: string | null;
+  taskId: string | null;
   title: string;
   description: string | null;
   status: "todo" | "in_progress" | "done" | "cancelled";
@@ -38,9 +38,9 @@ export function serializeTask(row: {
 }) {
   return {
     id: row.id,
-    object: "task" as const,
+    object: "subtask" as const,
     project_id: row.projectId,
-    list_id: row.listId,
+    task_id: row.taskId,
     title: row.title,
     description: row.description,
     status: row.status,

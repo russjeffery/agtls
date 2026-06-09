@@ -2,12 +2,12 @@ import { NextRequest } from "next/server";
 import { eq, and, desc, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { task, taskList } from "@/lib/db/schema";
+import { subtask, task } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
 import { created, errorResponse, listResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
-import { serializeTask } from "@/lib/api/serialize";
+import { serializeSubtask } from "@/lib/api/serialize";
 import { wantsHtml } from "@/lib/api/accepts";
 import { htmlResponse } from "@/lib/api/html";
 
@@ -34,19 +34,19 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const { id: listId } = await params;
+  const { id: taskId } = await params;
 
-  // Verify the task list exists and caller can access it
-  const [listRow] = await db
+  // Verify the task exists and caller can access it
+  const [taskRow] = await db
     .select()
-    .from(taskList)
-    .where(eq(taskList.id, listId))
+    .from(task)
+    .where(eq(task.id, taskId))
     .limit(1);
 
-  if (!listRow) return errorResponse(errors.notFound("task list", listId), 404);
+  if (!taskRow) return errorResponse(errors.notFound("task", taskId), 404);
 
-  if (listRow.projectId !== null) {
-    if (!auth || auth.projectId !== listRow.projectId) {
+  if (taskRow.projectId !== null) {
+    if (!auth || auth.projectId !== taskRow.projectId) {
       return errorResponse(errors.forbidden(), 403);
     }
   }
@@ -60,47 +60,49 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
   let cursorCondition;
   if (after) {
     const [cursorRow] = await db
-      .select({ createdAt: task.createdAt })
-      .from(task)
-      .where(eq(task.id, after))
+      .select({ createdAt: subtask.createdAt })
+      .from(subtask)
+      .where(eq(subtask.id, after))
       .limit(1);
     if (cursorRow) {
-      cursorCondition = lt(task.createdAt, cursorRow.createdAt);
+      cursorCondition = lt(subtask.createdAt, cursorRow.createdAt);
     }
   }
 
-  const baseCondition = eq(task.listId, listId);
+  const baseCondition = eq(subtask.taskId, taskId);
   const conditions = cursorCondition
     ? and(baseCondition, cursorCondition)
     : baseCondition;
 
   const rows = await db
     .select()
-    .from(task)
+    .from(subtask)
     .where(conditions)
-    .orderBy(desc(task.createdAt))
+    .orderBy(desc(subtask.createdAt))
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
-  const data = rows.slice(0, limit).map(serializeTask);
+  const data = rows.slice(0, limit).map(serializeSubtask);
   const nextCursor = hasMore ? data[data.length - 1].id : null;
 
   if (wantsHtml(request)) {
     return htmlResponse(
       {
-        title: "Tasks",
+        title: "Subtasks",
+        objectType: "subtask",
         breadcrumb: [
           { label: "API", href: "/" },
-          { label: "task-lists", href: "/api/task-lists" },
-          { label: listId, href: `/api/task-lists/${listId}` },
-          { label: "tasks" },
+          { label: "tasks", href: "/api/tasks" },
+          { label: taskId, href: `/api/tasks/${taskId}` },
+          { label: "subtasks" },
         ],
-        description: `Tasks in list ${listId}.`,
+        description: `Subtasks in task ${taskId}.`,
         list: {
           items: data as Record<string, unknown>[],
           columns: [
             { key: "id", label: "ID", mono: true },
             { key: "title", label: "Title" },
+            { key: "task_id", label: "Task", mono: true },
             {
               key: "status",
               label: "Status",
@@ -121,23 +123,21 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
                 urgent: "#f87171",
               },
             },
-            { key: "created_at", label: "Created" },
           ],
-          itemHref: (item) => `/api/tasks/${(item as { id: string }).id}`,
+          itemHref: (item) => `/api/subtasks/${(item as { id: string }).id}`,
           hasMore,
           nextCursor,
         },
         apiRef: [
           {
             method: "GET",
-            path: `/api/task-lists/${listId}/tasks`,
-            description:
-              "List tasks in this list. Supports ?limit=, ?after=",
+            path: `/api/tasks/${taskId}/subtasks`,
+            description: "List subtasks in this task. Supports ?limit=, ?after=",
           },
           {
             method: "POST",
-            path: `/api/task-lists/${listId}/tasks`,
-            description: "Create a task in this list.",
+            path: `/api/tasks/${taskId}/subtasks`,
+            description: "Create a subtask in this task.",
           },
         ],
       },
@@ -159,19 +159,19 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const { id: listId } = await params;
+  const { id: taskId } = await params;
 
-  // Verify the task list exists and caller can access/write it
-  const [listRow] = await db
+  // Verify the task exists and caller can access/write it
+  const [taskRow] = await db
     .select()
-    .from(taskList)
-    .where(eq(taskList.id, listId))
+    .from(task)
+    .where(eq(task.id, taskId))
     .limit(1);
 
-  if (!listRow) return errorResponse(errors.notFound("task list", listId), 404);
+  if (!taskRow) return errorResponse(errors.notFound("task", taskId), 404);
 
-  if (listRow.projectId !== null) {
-    if (!auth || auth.projectId !== listRow.projectId) {
+  if (taskRow.projectId !== null) {
+    if (!auth || auth.projectId !== taskRow.projectId) {
       return errorResponse(errors.forbidden(), 403);
     }
   }
@@ -184,15 +184,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return errorResponse(errors.invalidParam("body", msg), 400);
   }
 
-  const id = newId("task");
+  const id = newId("subtask");
   const now = new Date();
 
   const [row] = await db
-    .insert(task)
+    .insert(subtask)
     .values({
       id,
       projectId: auth ? auth.projectId : null,
-      listId,
+      taskId,
       title: body.title,
       description: body.description ?? null,
       status: body.status ?? "todo",
@@ -208,10 +208,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   if (wantsHtml(request)) {
     return Response.redirect(
-      new URL(`/api/tasks/${row.id}`, request.url).toString(),
+      new URL(`/api/subtasks/${row.id}`, request.url).toString(),
       303
     );
   }
 
-  return created(serializeTask(row));
+  return created(serializeSubtask(row));
 }
