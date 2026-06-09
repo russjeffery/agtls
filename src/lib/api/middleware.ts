@@ -7,6 +7,10 @@ export interface AuthContext {
   project: typeof project.$inferSelect;
   apiKeyId: string;
   environment: "live" | "test";
+  // Scope set for agent-auth credentials. `null` means an unscoped legacy key
+  // (full access). Scope enforcement on resource routes is not wired up yet —
+  // this surfaces the scopes so callers can introspect them.
+  scopes: string[] | null;
 }
 
 /**
@@ -47,6 +51,11 @@ export async function resolveAuth(
 
   const { key, proj } = rows[0];
 
+  // Access-token credentials (agent-auth) carry an expiry; reject once past it.
+  if (key.expiresAt && key.expiresAt.getTime() <= Date.now()) {
+    throw new Error("The API key provided has expired.");
+  }
+
   // Fire-and-forget last_used_at update
   db.update(apiKey)
     .set({ lastUsedAt: new Date() })
@@ -59,6 +68,7 @@ export async function resolveAuth(
     project: proj,
     apiKeyId: key.id,
     environment: key.environment,
+    scopes: key.scopes ?? null,
   };
 }
 

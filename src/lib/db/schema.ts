@@ -89,8 +89,94 @@ export const apiKey = pgTable("api_key", {
   // SHA-256 of the full key — never stored in plaintext after creation
   keyHash: text("key_hash").notNull().unique(),
   environment: apiKeyEnvironment("environment").notNull().default("live"),
+  // Credentials issued from the agent-auth flow carry an explicit scope set
+  // and (for access_token credentials) an expiry. Legacy keys leave both null,
+  // which resolveAuth treats as "never expires / full access".
+  scopes: jsonb("scopes").$type<string[]>(),
+  expiresAt: timestamp("expires_at"),
+  // Agent-auth linkage — lets us tag keys in events and find them on revoke.
+  createdByAgent: boolean("created_by_agent").notNull().default(false),
+  agentRegistrationId: text("agent_registration_id"),
   lastUsedAt: timestamp("last_used_at"),
   revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Agent auth (auth.md) ─────────────────────────────────────────────────────
+//
+// One row per registration created through POST /agent/auth. Covers all three
+// on-wire flows: agent-verified (ID-JAG), and the two user-claimed entrypoints
+// (anonymous start, email-verification). See src/lib/agent-auth/ and auth.md.
+
+export const agentRegistrationType = pgEnum("agent_registration_type", [
+  "agent-provider", // agent-verified, via ID-JAG
+  "anonymous", // user-claimed, anonymous start
+  "email-verification", // user-claimed, email required
+]);
+
+export const agentRegistrationStatus = pgEnum("agent_registration_status", [
+  "active", // agent-verified registration with a live credential
+  "unclaimed", // user-claimed, awaiting OTP completion
+  "claimed", // user-claimed, OTP completed and bound to a user
+  "expired", // claim window elapsed before completion
+  "revoked", // credential(s) invalidated (e.g. logout token)
+]);
+
+export const agentRegistration = pgTable("agent_registration", {
+  id: text("id").primaryKey(), // nanoid, prefix: reg_
+  type: agentRegistrationType("type").notNull(),
+  status: agentRegistrationStatus("status").notNull(),
+  requestedCredentialType: text("requested_credential_type")
+    .$type<"access_token" | "api_key">()
+    .notNull(),
+  // The principal that owns issued credentials. Created lazily for
+  // email-verification (no principal until the claim completes).
+  projectId: text("project_id").references(() => project.id, {
+    onDelete: "cascade",
+  }),
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+  apiKeyId: text("api_key_id"),
+  // Scope sets. Pre-claim is what an anonymous credential gets up front.
+  preClaimScopes: jsonb("pre_claim_scopes").$type<string[]>(),
+  postClaimScopes: jsonb("post_claim_scopes").$type<string[]>().notNull(),
+  // Identity. email is the asserted/claim email; iss/sub/aud come from ID-JAG
+  // and are what revocation logout tokens key off of.
+  email: text("email"),
+  iss: text("iss"),
+  sub: text("sub"),
+  aud: text("aud"),
+  // Provider correlation fields for ID-JAG flows.
+  agentPlatform: text("agent_platform"),
+  agentContextId: text("agent_context_id"),
+  // Claim ceremony — store only SHA-256 hashes of the bearer secrets.
+  claimAttemptId: text("claim_attempt_id"),
+  claimTokenHash: text("claim_token_hash"),
+  claimTokenExpiresAt: timestamp("claim_token_expires_at"),
+  claimViewTokenHash: text("claim_view_token_hash"),
+  otpHash: text("otp_hash"),
+  otpExpiresAt: timestamp("otp_expires_at"),
+  claimedByUserId: text("claimed_by_user_id"),
+  claimedAt: timestamp("claimed_at"),
+  // Audit trail.
+  registrationIp: text("registration_ip"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Replay cache for ID-JAG and logout-token `jti` values. A shared store is
+// required when /agent/auth runs across multiple replicas.
+export const agentAssertionJti = pgTable("agent_assertion_jti", {
+  jti: text("jti").primaryKey(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Append-only audit log for agent-auth state transitions.
+export const agentAuditEvent = pgTable("agent_audit_event", {
+  id: text("id").primaryKey(), // nanoid, prefix: evt_
+  type: text("type").notNull(),
+  registrationId: text("registration_id"),
+  data: jsonb("data").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

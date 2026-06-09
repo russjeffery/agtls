@@ -28,7 +28,20 @@ export function noContent(): NextResponse {
 }
 
 export function errorResponse(error: ApiError, status: number): NextResponse {
-  return NextResponse.json({ error }, { status });
+  const init: { status: number; headers?: Record<string, string> } = { status };
+  // Per RFC 9728 / auth.md: every 401 advertises where agents can discover how
+  // to authenticate, so they can bootstrap the agent-auth flow off a 401.
+  if (status === 401) {
+    const appUrl = (
+      process.env.NEXT_PUBLIC_APP_URL ??
+      process.env.BETTER_AUTH_URL ??
+      "http://localhost:3000"
+    ).replace(/\/$/, "");
+    init.headers = {
+      "WWW-Authenticate": `Bearer resource_metadata="${appUrl}/.well-known/oauth-protected-resource"`,
+    };
+  }
+  return NextResponse.json({ error }, init);
 }
 
 export function listResponse<T>(

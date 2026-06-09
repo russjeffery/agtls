@@ -195,7 +195,7 @@ export function htmlResponse(opts: PageOptions, request: Request): Response {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escHtml(opts.title)} — agtools</title>
+  <title>${escHtml(opts.title)} — agtls</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {

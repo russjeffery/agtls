@@ -4,7 +4,7 @@ import { webhookTools } from "./tools/webhooks";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
-    name: "agtools",
+    name: "agtls",
     version: "0.1.0",
   });
 

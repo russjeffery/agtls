@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# agtools
+# agtls
 
 Open-source infrastructure for AI agents. REST + MCP first.
 

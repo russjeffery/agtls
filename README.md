@@ -1,4 +1,4 @@
-# agtools
+# agtls
 
 Open-source infrastructure for AI agents. Task lists, webhook catchers, pub/sub, and more — available via REST and MCP.
 
