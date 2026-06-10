@@ -7,7 +7,7 @@ import {
 } from "../helpers/agent-auth";
 import { lastClaimViewToken, sentEmails } from "../helpers/email";
 import { testDb } from "../helpers/db";
-import { agentRegistration, apiKey, user, project } from "@/lib/db/schema";
+import { agentRegistration, apiKey, user, member } from "@/lib/db/schema";
 import {
   getClaimView,
   generateOtpForView,
@@ -96,7 +96,7 @@ describe("Anonymous claim ceremony", () => {
     expect(key.keyPrefix).toBeTruthy();
   });
 
-  it("user matching — existing verified user: project reassigned to real user", async () => {
+  it("user matching — existing verified user: real user takes over the agent's org", async () => {
     const { register, claim, complete } = await getRoutes();
 
     // Seed a pre-existing verified user
@@ -139,20 +139,23 @@ describe("Anonymous claim ceremony", () => {
       })
     );
 
-    // The project belonging to the registration should now be owned by realUser
+    // The registration's org should now be owned by realUser, with the agent
+    // demoted to a plain member — that's what the human's dashboard lists.
     const [reg] = await testDb
       .select()
       .from(agentRegistration)
       .where(eq(agentRegistration.id, registration_id));
     expect(reg.claimedByUserId).toBe(realUserId);
+    expect(reg.organizationId).toBeTruthy();
 
-    if (reg.projectId) {
-      const [proj] = await testDb
-        .select()
-        .from(project)
-        .where(eq(project.id, reg.projectId));
-      expect(proj.userId).toBe(realUserId);
-    }
+    const members = await testDb
+      .select()
+      .from(member)
+      .where(eq(member.organizationId, reg.organizationId!));
+    const humanMember = members.find((m) => m.userId === realUserId);
+    const agentMember = members.find((m) => m.userId === reg.userId);
+    expect(humanMember?.role).toBe("owner");
+    expect(agentMember?.role).toBe("member");
   });
 
   it("user matching — no pre-existing user: JIT agent user is promoted (emailVerified true)", async () => {
@@ -244,7 +247,7 @@ describe("Email-verification claim ceremony", () => {
     }>(completeRes);
 
     expect(completeBody.status).toBe("claimed");
-    expect(completeBody.credential).toMatch(/^agt_live_/);
+    expect(completeBody.credential).toMatch(/^agt_/);
     expect(completeBody.credential_type).toBe("api_key");
     expect(completeBody.scopes).toEqual(["api.read", "api.write"]);
 

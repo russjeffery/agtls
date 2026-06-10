@@ -7,13 +7,26 @@ import { test, expect } from "@playwright/test";
 test.describe("landing page", () => {
   test("shows the wordmark, tagline and live tools", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("agtls").first()).toBeVisible();
     await expect(
-      page.getByText("Open-source infrastructure for AI agents")
+      page.getByRole("link", { name: "Agent Tools" }).first()
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Tools for agents/ })
     ).toBeVisible();
     await expect(page.getByText("Tasks", { exact: true })).toBeVisible();
-    await expect(page.getByText("Webhook Catcher")).toBeVisible();
+    await expect(page.getByText("Webhooks", { exact: true })).toBeVisible();
     await expect(page.getByText("POST /api/mcp")).toBeVisible();
+  });
+
+  test("header links to human sign-in and sign-up", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/sign-in"
+    );
+    await expect(
+      page.getByRole("link", { name: /get api key/i })
+    ).toHaveAttribute("href", "/sign-up");
   });
 });
 
@@ -24,7 +37,9 @@ test.describe("content negotiation", () => {
     const res = await page.goto("/api/tasks");
     expect(res?.status()).toBe(200);
     expect(res?.headers()["content-type"]).toContain("text/html");
-    await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Tasks", exact: true })
+    ).toBeVisible();
     await expect(page.getByText("API Reference")).toBeVisible();
   });
 
@@ -38,33 +53,135 @@ test.describe("content negotiation", () => {
     expect(body.object).toBe("list");
   });
 
-  test("renders a created resource's detail page and supports row navigation", async ({
+  test("renders a public resource's detail page to anonymous browsers", async ({
     page,
     request,
   }) => {
-    // Create a public task via the API, then view it in the browser.
+    // Create a public task via the API, then view it in the browser by ID.
     const created = await request.post("/api/tasks", {
       data: { name: "E2E Visible Task" },
     });
     expect(created.status()).toBe(201);
     const { id } = (await created.json()) as { id: string };
 
-    // Detail page shows the JSON resource.
     await page.goto(`/api/tasks/${id}`);
     await expect(page.getByText("Resource")).toBeVisible();
     await expect(page.getByText(id).first()).toBeVisible();
+  });
 
-    // The list page shows the row; clicking it navigates to the detail page.
+  test("prompts anonymous browsers to sign in instead of listing", async ({
+    page,
+  }) => {
     await page.goto("/api/tasks");
-    const row = page.getByText("E2E Visible Task");
+    await expect(page.getByText("Sign in to see your tasks")).toBeVisible();
+
+    await page.goto("/api/subtasks");
+    await expect(
+      page.getByText("Sign in to see your subtasks")
+    ).toBeVisible();
+  });
+});
+
+test.describe("logged-in experience", () => {
+  // One signed-up human reused across the tests in this block.
+  const email = `e2e-session-${Date.now()}@example.com`;
+  const password = "hunter2hunter2";
+
+  async function signUp(page: import("@playwright/test").Page) {
+    await page.goto("/sign-up");
+    await page.getByLabel("Name").fill("Session Human");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Create account" }).click();
+    await page.waitForURL("**/dashboard");
+  }
+
+  async function signIn(page: import("@playwright/test").Page) {
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("**/dashboard");
+  }
+
+  test("lists owned tasks on /api/tasks and navigates rows", async ({
+    page,
+  }) => {
+    await signUp(page);
+
+    // Mint an API key through the keys page's REST endpoint (cookie auth),
+    // then create an org-owned task with it.
+    const orgsRes = await page.request.get("/api/organizations", {
+      headers: { accept: "application/json" },
+    });
+    const orgs = (await orgsRes.json()) as { data: { id: string }[] };
+    expect(orgs.data.length).toBeGreaterThan(0);
+    const orgId = orgs.data[0].id;
+
+    const keyRes = await page.request.post(`/api/organizations/${orgId}/keys`, {
+      data: { name: "e2e key" },
+    });
+    expect(keyRes.status()).toBe(201);
+    const { key } = (await keyRes.json()) as { key: string };
+
+    const taskRes = await page.request.post("/api/tasks", {
+      headers: { authorization: `Bearer ${key}` },
+      data: { name: "Owned E2E Task" },
+    });
+    expect(taskRes.status()).toBe(201);
+    const { id } = (await taskRes.json()) as { id: string };
+
+    // The signed-in list page shows the row; clicking navigates to the item.
+    await page.goto("/api/tasks");
+    const row = page.getByText("Owned E2E Task");
     await expect(row).toBeVisible();
     await row.click();
     await expect(page).toHaveURL(new RegExp(`/api/tasks/${id}$`));
+
+    // Header shows the account menu with the dashboard/keys/account links.
+    await page.getByText("Session Human").first().click();
+    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "API keys" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Account" })).toBeVisible();
+
+    // An anonymous visitor gets a friendly 403 page for the owned task.
+    await page.context().clearCookies();
+    const res = await page.goto(`/api/tasks/${id}`);
+    expect(res?.status()).toBe(403);
+    await expect(page.getByText(/don't have access/i)).toBeVisible();
   });
 
-  test("shows an empty state for a resource with no items", async ({ page }) => {
-    await page.goto("/api/subtasks");
-    await expect(page.getByText(/No items yet/i)).toBeVisible();
+  test("account page changes password; keys page mints and revokes keys", async ({
+    page,
+  }) => {
+    await signIn(page);
+
+    // Keys page: create a key, see it listed, then revoke it.
+    await page.goto("/keys");
+    await page
+      .getByPlaceholder("Key name (e.g. production agent)")
+      .first()
+      .fill("rotating key");
+    await page.getByRole("button", { name: "Create key" }).first().click();
+    await expect(
+      page.getByText(/Save this key now/i).first()
+    ).toBeVisible();
+
+    // Account page: profile + change password.
+    await page.goto("/account");
+    await expect(page.getByText(email)).toBeVisible();
+    await page.getByLabel("Current password").fill(password);
+    await page.getByLabel("New password").fill("hunter3hunter3");
+    await page.getByRole("button", { name: "Change password" }).click();
+    await expect(page.getByText(/Password updated/i)).toBeVisible();
+
+    // The new password works.
+    await page.context().clearCookies();
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill("hunter3hunter3");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.waitForURL("**/dashboard");
   });
 });
 
@@ -86,7 +203,7 @@ test.describe("discovery & auth advertisement", () => {
     request,
   }) => {
     const res = await request.get("/api/tasks", {
-      headers: { authorization: "Bearer agt_live_definitelyinvalid" },
+      headers: { authorization: "Bearer agt_definitelyinvalid" },
     });
     expect(res.status()).toBe(401);
     expect(res.headers()["www-authenticate"]).toContain(

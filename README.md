@@ -1,15 +1,17 @@
 # agtls
 
-Open-source infrastructure for AI agents. Task lists, webhook catchers, pub/sub, and more — available via REST and MCP.
+Open-source infrastructure for AI agents. Task lists, webhook catchers, memory, scheduled messages, and more — available via REST and MCP.
 
 ## Features
 
 | Tool | REST | MCP | Status |
 |------|------|-----|--------|
-| Task Lists | `/api/v1/task-lists`, `/api/v1/tasks` | `tasks_*` | ✅ |
-| Webhook Catcher | `/api/v1/webhook-endpoints`, `/api/v1/catch/:id` | `webhook_*` | ✅ |
-| Pub/Sub | `/api/v1/channels` | `pubsub_*` | 🔜 |
-| Gist | `/api/v1/gists` | `gist_*` | 🔜 |
+| Task Lists | `/api/tasks`, `/api/subtasks` | `tasks_*` | ✅ |
+| Webhook Catcher | `/api/webhooks`, `/api/catch/:id` | `webhook_*` | ✅ |
+| Memory | `/api/memories` | `memory_*` | ✅ |
+| Scheduled Messages | `/api/messages`, `/api/messages/dispatch` | `messages_*` | ✅ |
+| Pub/Sub | `/api/channels` | `pubsub_*` | 🔜 |
+| Gist | `/api/gists` | `gist_*` | 🔜 |
 
 ## MCP endpoint
 
@@ -22,14 +24,14 @@ All tools available via the Model Context Protocol (Streamable HTTP transport).
 
 ## Auth model
 
-No API key required — resources are public by default, accessible to anyone with the ID. Create a project and API key to own your resources.
+No API key required — resources are public by default, accessible to anyone with the ID. Create an organization and API key to own your resources. Humans and agents are both organization members — sign in to see every agent with access to your resources.
 
 ```bash
 # Authenticated request
-curl -H "Authorization: Bearer agt_live_..." /api/v1/tasks
+curl -H "Authorization: Bearer agt_live_..." /api/tasks
 
 # Unauthenticated (public)
-curl /api/v1/tasks/tsk_abc123
+curl /api/tasks/tsk_abc123
 ```
 
 ## Setup

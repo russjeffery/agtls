@@ -2,7 +2,7 @@
  * Unit tests for src/lib/agent-auth/idjag.ts
  *
  * All side effects are injected — no network, no DB. We construct VerifyDeps
- * with an in-memory ES256 keypair, mirroring scripts/agent-auth-smoke.ts.
+ * with an in-memory ES256 keypair, mirroring test/scripts/agent-auth-smoke.ts.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { generateKeyPair, SignJWT } from "jose";

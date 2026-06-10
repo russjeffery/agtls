@@ -1,11 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, and, isNull, desc, lt } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { task, subtask } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
 import { serializeTask, serializeSubtask } from "@/lib/api/serialize";
+import { mintResourceClaimToken } from "@/lib/api/claim";
 import type { AuthContext } from "@/lib/api/middleware";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
@@ -45,11 +46,11 @@ function mcpOk(data: unknown) {
 // ─── Ownership check helpers ──────────────────────────────────────────────────
 
 function canAccess(
-  resourceProjectId: string | null,
-  authProjectId: string | null | undefined
+  resourceOrganizationId: string | null,
+  authOrganizationId: string | null | undefined
 ): boolean {
-  if (resourceProjectId === null) return true;
-  return resourceProjectId === authProjectId;
+  if (resourceOrganizationId === null) return true;
+  return resourceOrganizationId === authOrganizationId;
 }
 
 // ─── Cursor pagination helper ─────────────────────────────────────────────────
@@ -80,9 +81,12 @@ export function taskTools(server: McpServer): void {
       }
 
       const limit = clampLimit(args.limit);
-      const ownerCondition = auth
-        ? eq(task.projectId, auth.projectId)
-        : isNull(task.projectId);
+      // Anonymous callers can't enumerate tasks (mirrors GET /api/tasks);
+      // public tasks stay reachable by ID via tasks_get.
+      if (!auth) {
+        return mcpOk({ object: "list", data: [], has_more: false, next_cursor: null });
+      }
+      const ownerCondition = eq(task.organizationId, auth.organizationId);
 
       const conditions = [ownerCondition];
 
@@ -137,7 +141,7 @@ export function taskTools(server: McpServer): void {
         .limit(1);
 
       if (!row) return mcpError(`No task with ID '${args.id}' exists.`);
-      if (!canAccess(row.projectId, auth?.projectId)) {
+      if (!canAccess(row.organizationId, auth?.organizationId)) {
         return mcpError("You do not have access to this resource.");
       }
 
@@ -165,19 +169,27 @@ export function taskTools(server: McpServer): void {
       const id = newId("task");
       const now = new Date();
 
+      // Public creation gets a claim token usable later via the claim tool.
+      const claim = auth ? null : mintResourceClaimToken();
+
       const [row] = await db
         .insert(task)
         .values({
           id,
-          projectId: auth ? auth.projectId : null,
+          organizationId: auth ? auth.organizationId : null,
           name: args.name,
           description: args.description ?? null,
+          claimTokenHash: claim?.hash ?? null,
           createdAt: now,
           updatedAt: now,
         })
         .returning();
 
-      return mcpOk(serializeTask(row));
+      return mcpOk(
+        claim
+          ? { ...serializeTask(row), claim_token: claim.token }
+          : serializeTask(row)
+      );
     }
   );
 
@@ -206,7 +218,7 @@ export function taskTools(server: McpServer): void {
         .limit(1);
 
       if (!row) return mcpError(`No task with ID '${args.id}' exists.`);
-      if (!canAccess(row.projectId, auth?.projectId)) {
+      if (!canAccess(row.organizationId, auth?.organizationId)) {
         return mcpError("You do not have access to this resource.");
       }
 
@@ -249,7 +261,7 @@ export function taskTools(server: McpServer): void {
         .limit(1);
 
       if (!row) return mcpError(`No task with ID '${args.id}' exists.`);
-      if (!canAccess(row.projectId, auth?.projectId)) {
+      if (!canAccess(row.organizationId, auth?.organizationId)) {
         return mcpError("You do not have access to this resource.");
       }
 
@@ -287,9 +299,12 @@ export function taskTools(server: McpServer): void {
       }
 
       const limit = clampLimit(args.limit);
-      const ownerCondition = auth
-        ? eq(subtask.projectId, auth.projectId)
-        : isNull(subtask.projectId);
+      // Anonymous callers can't enumerate subtasks (mirrors GET /api/subtasks);
+      // public subtasks stay reachable by ID via subtasks_get.
+      if (!auth) {
+        return mcpOk({ object: "list", data: [], has_more: false, next_cursor: null });
+      }
+      const ownerCondition = eq(subtask.organizationId, auth.organizationId);
 
       const conditions = [ownerCondition];
 
@@ -349,7 +364,7 @@ export function taskTools(server: McpServer): void {
         .limit(1);
 
       if (!row) return mcpError(`No subtask with ID '${args.id}' exists.`);
-      if (!canAccess(row.projectId, auth?.projectId)) {
+      if (!canAccess(row.organizationId, auth?.organizationId)) {
         return mcpError("You do not have access to this resource.");
       }
 
@@ -395,7 +410,7 @@ export function taskTools(server: McpServer): void {
           .limit(1);
 
         if (!taskRow) return mcpError(`No task with ID '${args.task_id}' exists.`);
-        if (!canAccess(taskRow.projectId, auth?.projectId)) {
+        if (!canAccess(taskRow.organizationId, auth?.organizationId)) {
           return mcpError("You do not have access to this task.");
         }
       }
@@ -403,11 +418,14 @@ export function taskTools(server: McpServer): void {
       const id = newId("subtask");
       const now = new Date();
 
+      // Public creation gets a claim token usable later via the claim tool.
+      const claim = auth ? null : mintResourceClaimToken();
+
       const [row] = await db
         .insert(subtask)
         .values({
           id,
-          projectId: auth ? auth.projectId : null,
+          organizationId: auth ? auth.organizationId : null,
           taskId: args.task_id ?? null,
           title: args.title,
           description: args.description ?? null,
@@ -417,12 +435,17 @@ export function taskTools(server: McpServer): void {
           metadata: args.metadata ?? {},
           dueAt: args.due_at != null ? new Date(args.due_at * 1000) : null,
           completedAt: null,
+          claimTokenHash: claim?.hash ?? null,
           createdAt: now,
           updatedAt: now,
         })
         .returning();
 
-      return mcpOk(serializeSubtask(row));
+      return mcpOk(
+        claim
+          ? { ...serializeSubtask(row), claim_token: claim.token }
+          : serializeSubtask(row)
+      );
     }
   );
 
@@ -463,7 +486,7 @@ export function taskTools(server: McpServer): void {
         .limit(1);
 
       if (!row) return mcpError(`No subtask with ID '${args.id}' exists.`);
-      if (!canAccess(row.projectId, auth?.projectId)) {
+      if (!canAccess(row.organizationId, auth?.organizationId)) {
         return mcpError("You do not have access to this resource.");
       }
 
@@ -522,7 +545,7 @@ export function taskTools(server: McpServer): void {
         .limit(1);
 
       if (!row) return mcpError(`No subtask with ID '${args.id}' exists.`);
-      if (!canAccess(row.projectId, auth?.projectId)) {
+      if (!canAccess(row.organizationId, auth?.organizationId)) {
         return mcpError("You do not have access to this resource.");
       }
 

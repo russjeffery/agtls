@@ -1,24 +1,12 @@
 import { ArrowRight, BookOpen, Braces, Plug, Zap, ShieldCheck, ListChecks, Webhook, Radio, FileText } from "lucide-react";
+import Link from "next/link";
+import { headers } from "next/headers";
+import { Logo } from "@/components/logo";
+import { auth } from "@/lib/auth/server";
+import { AccountMenu } from "@/components/account-menu";
 
-function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <svg viewBox="0 0 48 48" fill="none" width={size} height={size} aria-hidden>
-      <g stroke="var(--ds-accent)" strokeWidth="2.4" strokeLinecap="round">
-        <path d="M24 24 V9" />
-        <path d="M24 24 L11 33" />
-        <path d="M24 24 L37 33" />
-      </g>
-      <g fill="var(--ds-accent)">
-        <circle cx="24" cy="8" r="4" />
-        <circle cx="10" cy="34" r="4" />
-        <circle cx="38" cy="34" r="4" />
-      </g>
-      <rect x="18" y="18" width="12" height="12" rx="3.5" fill="var(--bg-app)" stroke="var(--ds-accent)" strokeWidth="2.4" />
-    </svg>
-  );
-}
-
-function SiteHeader() {
+async function SiteHeader() {
+  const session = await auth.api.getSession({ headers: await headers() });
   return (
     <header
       className="sticky top-0 z-30 flex items-center gap-7 px-8 py-3.5 border-b"
@@ -29,14 +17,9 @@ function SiteHeader() {
         fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
       }}
     >
-      <a
-        href="/"
-        className="inline-flex items-center gap-2.5 text-lg font-semibold no-underline"
-        style={{ color: "var(--text-strong)", letterSpacing: "-0.02em" }}
-      >
-        <Logo size={26} />
-        <span>agtools</span>
-      </a>
+      <Link href="/" className="inline-flex no-underline">
+        <Logo height={50} />
+      </Link>
       <nav className="flex gap-5 ml-3">
         {["Tools", "Docs", "Pricing", "Changelog"].map((item) => (
           <a
@@ -50,23 +33,31 @@ function SiteHeader() {
         ))}
       </nav>
       <div className="ml-auto flex items-center gap-5">
-        <a
-          href="#"
-          className="text-sm no-underline transition-colors"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Sign in
-        </a>
-        <a
-          href="#"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded no-underline transition-colors"
-          style={{
-            background: "var(--ds-accent)",
-            color: "var(--text-on-accent)",
-          }}
-        >
-          Get API key <ArrowRight size={14} />
-        </a>
+        {session ? (
+          <AccountMenu
+            user={{ name: session.user.name, email: session.user.email }}
+          />
+        ) : (
+          <>
+            <a
+              href="/sign-in"
+              className="text-sm no-underline transition-colors"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Sign in
+            </a>
+            <a
+              href="/sign-up"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded no-underline transition-colors"
+              style={{
+                background: "var(--ds-accent)",
+                color: "var(--text-on-accent)",
+              }}
+            >
+              Get API key <ArrowRight size={14} />
+            </a>
+          </>
+        )}
       </div>
     </header>
   );
@@ -96,7 +87,7 @@ function Hero() {
           className="eyebrow"
           style={{ color: "var(--ds-accent)" }}
         >
-          // MCP · HTTP · CLI
+          {"// MCP · HTTP · CLI"}
         </span>
         <h1
           className="mt-5"
@@ -127,7 +118,7 @@ function Hero() {
         </p>
         <div className="flex gap-4 justify-center mt-9">
           <a
-            href="#"
+            href="/sign-up"
             className="inline-flex items-center gap-2 font-semibold px-5 py-3.5 rounded no-underline transition-colors text-sm"
             style={{
               fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
@@ -239,7 +230,7 @@ function Features() {
     <section className="max-w-5xl mx-auto px-8 py-20">
       <div className="mb-10">
         <span className="eyebrow" style={{ color: "var(--ds-accent)" }}>
-          // Why agtools
+          {"// Why agtools"}
         </span>
         <h2
           className="mt-3"
@@ -348,7 +339,7 @@ function Tools() {
       <div className="max-w-5xl mx-auto px-8">
         <div className="mb-10">
           <span className="eyebrow" style={{ color: "var(--ds-accent)" }}>
-            // available tools
+            {"// available tools"}
           </span>
           <h2
             className="mt-3"
@@ -511,7 +502,7 @@ function McpSection() {
               color: "var(--gray-300)",
             }}
           >
-            Authorization: Bearer agt_live_…
+            Authorization: Bearer agt_…
           </code>
         </p>
       </div>
@@ -543,7 +534,7 @@ function CtaBand() {
           Give your agent something to do.
         </h2>
         <a
-          href="#"
+          href="/sign-up"
           className="inline-flex items-center gap-2 font-semibold px-5 py-3.5 rounded no-underline transition-colors text-sm"
           style={{
             fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
@@ -570,7 +561,7 @@ function AuthNote() {
         }}
       >
         No API key? Resources are public by default — anyone with the ID can read and write.
-        Create a project to own your resources.
+        Create an organization to own your resources.
       </p>
     </div>
   );
@@ -590,7 +581,7 @@ function SiteFooter() {
     >
       <div className="max-w-5xl mx-auto px-8 flex justify-between gap-10 flex-wrap">
         <div>
-          <a
+          <Link
             href="/"
             className="inline-flex items-center gap-2 no-underline"
             style={{
@@ -601,8 +592,8 @@ function SiteFooter() {
               letterSpacing: "-0.02em",
             }}
           >
-            <Logo size={22} /> agtools
-          </a>
+            <Logo height={22} />
+          </Link>
           <p
             className="mt-3.5"
             style={{

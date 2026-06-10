@@ -33,6 +33,21 @@ export const errors = {
     code: "resource_not_found",
     message: `No ${resource} with ID '${id}' exists.`,
   }),
+  alreadyClaimed: (message: string): ApiError => ({
+    type: "invalid_request_error",
+    code: "resource_already_claimed",
+    message,
+  }),
+  notClaimable: (message: string): ApiError => ({
+    type: "invalid_request_error",
+    code: "resource_not_claimable",
+    message,
+  }),
+  invalidClaimToken: (message = "Unknown claim token."): ApiError => ({
+    type: "authorization_error",
+    code: "invalid_claim_token",
+    message,
+  }),
   invalidParam: (param: string, message: string): ApiError => ({
     type: "invalid_request_error",
     code: "invalid_param",

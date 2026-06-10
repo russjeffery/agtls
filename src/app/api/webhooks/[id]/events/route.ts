@@ -2,12 +2,17 @@ import { NextRequest } from "next/server";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { webhookEndpoint, webhookEvent } from "@/lib/db/schema";
-import { resolveAuth } from "@/lib/api/middleware";
+import {
+  resolveViewer,
+  viewerCanAccess,
+  viewerUser,
+  type Viewer,
+} from "@/lib/api/middleware";
 import { noContent, errorResponse, listResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeWebhookEvent } from "@/lib/api/serialize";
 import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
+import { htmlResponse, errorHtmlResponse } from "@/lib/api/html";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,19 +27,17 @@ async function getEndpointOrNull(id: string) {
 
 function checkOwnership(
   endpoint: typeof webhookEndpoint.$inferSelect,
-  auth: { projectId: string } | null
+  viewer: Viewer
 ): boolean {
-  if (endpoint.projectId === null) return true;
-  if (!auth) return false;
-  return auth.projectId === endpoint.projectId;
+  return viewerCanAccess(endpoint.organizationId, viewer);
 }
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { id } = await params;
 
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -44,10 +47,33 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const endpoint = await getEndpointOrNull(id);
   if (!endpoint) {
+    if (wantsHtml(request)) {
+      return errorHtmlResponse(
+        {
+          status: 404,
+          title: "Webhook endpoint not found",
+          message: `No webhook endpoint with ID '${id}' exists. It may have been deleted.`,
+          user: viewerUser(viewer),
+        },
+        request
+      );
+    }
     return errorResponse(errors.notFound("webhook endpoint", id), 404);
   }
 
-  if (!checkOwnership(endpoint, auth)) {
+  if (!checkOwnership(endpoint, viewer)) {
+    if (wantsHtml(request)) {
+      return errorHtmlResponse(
+        {
+          status: 403,
+          title: "You don't have access to these events",
+          message:
+            "This endpoint belongs to another organization. Sign in with an account that's a member of the owning organization, or use its API key.",
+          user: viewerUser(viewer),
+        },
+        request
+      );
+    }
     return errorResponse(errors.forbidden(), 403);
   }
 
@@ -88,8 +114,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       {
         title: "Events",
         objectType: "webhook_events",
+        user: viewerUser(viewer),
         breadcrumb: [
-          { label: "API", href: "/" },
+          { label: "API", href: "/api" },
           { label: "webhooks", href: "/api/webhooks" },
           { label: id, href: `/api/webhooks/${id}` },
           { label: "events" },
@@ -142,9 +169,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 export async function DELETE(request: NextRequest, { params }: Params) {
   const { id } = await params;
 
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -157,7 +184,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
     return errorResponse(errors.notFound("webhook endpoint", id), 404);
   }
 
-  if (!checkOwnership(endpoint, auth)) {
+  if (!checkOwnership(endpoint, viewer)) {
     return errorResponse(errors.forbidden(), 403);
   }
 

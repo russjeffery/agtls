@@ -48,7 +48,7 @@ describe("POST /api/agent/auth — agent-verified (identity_assertion + id-jag)"
     expect(body.registration_id).toMatch(/^reg_/);
     expect(body.registration_type).toBe("agent-provider");
     expect(body.credential_type).toBe("api_key");
-    expect(body.credential).toMatch(/^agt_live_/);
+    expect(body.credential).toMatch(/^agt_/);
     expect(body.credential_expires).toBeNull();
     expect(body.scopes).toEqual(["api.read", "api.write"]);
 
@@ -83,7 +83,7 @@ describe("POST /api/agent/auth — agent-verified (identity_assertion + id-jag)"
     }>(res);
 
     expect(body.credential_type).toBe("access_token");
-    expect(body.credential).toMatch(/^agt_live_/);
+    expect(body.credential).toMatch(/^agt_/);
     expect(body.credential_expires).not.toBeNull();
     expect(body.scopes).toEqual(["api.read", "api.write"]);
   });
@@ -291,7 +291,7 @@ describe("POST /api/agent/auth — anonymous", () => {
     expect(body.registration_id).toMatch(/^reg_/);
     expect(body.registration_type).toBe("anonymous");
     expect(body.credential_type).toBe("api_key");
-    expect(body.credential).toMatch(/^agt_live_/);
+    expect(body.credential).toMatch(/^agt_/);
     expect(body.credential_expires).toBeNull();
     expect(body.scopes).toEqual(["api.read"]);
     expect(body.claim_url).toContain("/api/agent/auth/claim");

@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
 import { testDb } from "./db";
-import { user, project, apiKey } from "@/lib/db/schema";
+import { user, organization, member, apiKey } from "@/lib/db/schema";
 import { newId, newApiKey } from "@/lib/api/ids";
 
 function hash(key: string): string {
   return createHash("sha256").update(key).digest("hex");
 }
 
-export interface SeededProject {
+export interface SeededOrganization {
   userId: string;
-  projectId: string;
+  organizationId: string;
   /** Plaintext API key — pass as the Bearer token. */
   key: string;
   apiKeyId: string;
@@ -18,20 +18,20 @@ export interface SeededProject {
 let slugCounter = 0;
 
 /**
- * Seed a user + project + a single live API key. Returns the plaintext key for
- * use as a Bearer token. Each call is independent (unique slug/email).
+ * Seed a user + organization (user as owner member) + a single live API key.
+ * Returns the plaintext key for use as a Bearer token. Each call is
+ * independent (unique slug/email).
  */
-export async function seedProject(
+export async function seedOrganization(
   opts: {
-    environment?: "live" | "test";
     name?: string;
     /** Override the issued key (e.g. to seed an expired or scoped credential). */
     scopes?: string[] | null;
     expiresAt?: Date | null;
   } = {}
-): Promise<SeededProject> {
+): Promise<SeededOrganization> {
   const n = slugCounter++;
-  const userId = newId("project").replace("prj_", "usr_") + `_${n}`;
+  const userId = newId("organization").replace("org_", "usr_") + `_${n}`;
   const now = new Date();
 
   await testDb.insert(user).values({
@@ -43,30 +43,33 @@ export async function seedProject(
     updatedAt: now,
   });
 
-  const projectId = newId("project");
-  await testDb.insert(project).values({
-    id: projectId,
-    userId,
-    name: opts.name ?? `Project ${n}`,
-    slug: `project-${n}-${Date.now()}`,
+  const organizationId = newId("organization");
+  await testDb.insert(organization).values({
+    id: organizationId,
+    name: opts.name ?? `Org ${n}`,
+    slug: `org-${n}-${Date.now()}`,
     createdAt: now,
-    updatedAt: now,
+  });
+  await testDb.insert(member).values({
+    id: newId("member"),
+    organizationId,
+    userId,
+    role: "owner",
+    createdAt: now,
   });
 
-  const environment = opts.environment ?? "live";
-  const key = newApiKey(environment);
+  const key = newApiKey();
   const apiKeyId = newId("apiKey");
   await testDb.insert(apiKey).values({
     id: apiKeyId,
-    projectId,
+    organizationId,
     name: "Test key",
     keyPrefix: key.slice(0, 20),
     keyHash: hash(key),
-    environment,
     scopes: opts.scopes === undefined ? null : opts.scopes,
     expiresAt: opts.expiresAt ?? null,
     createdAt: now,
   });
 
-  return { userId, projectId, key, apiKeyId };
+  return { userId, organizationId, key, apiKeyId };
 }

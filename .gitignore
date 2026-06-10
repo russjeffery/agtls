@@ -13,8 +13,8 @@
 # testing
 /coverage
 /.e2e-tmp
-/test-results
-/playwright-report
+/test/.results
+/test/.report
 
 # next.js
 /.next/

@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { taskTools } from "./tools/tasks";
 import { webhookTools } from "./tools/webhooks";
+import { memoryTools } from "./tools/memories";
+import { messageTools } from "./tools/messages";
+import { claimTools } from "./tools/claim";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -10,6 +13,9 @@ export function createMcpServer(): McpServer {
 
   taskTools(server);
   webhookTools(server);
+  memoryTools(server);
+  messageTools(server);
+  claimTools(server);
 
   return server;
 }

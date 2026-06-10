@@ -22,13 +22,13 @@ export interface IssuedCredential {
  * automatically.
  */
 export async function issueCredential(opts: {
-  projectId: string;
+  organizationId: string;
   credentialType: CredentialType;
   scopes: string[];
   registrationId: string;
   name?: string;
 }): Promise<IssuedCredential> {
-  const raw = newApiKey("live");
+  const raw = newApiKey();
   const expiresAt =
     opts.credentialType === "access_token"
       ? new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000)
@@ -36,11 +36,10 @@ export async function issueCredential(opts: {
   const id = newId("apiKey");
   await db.insert(apiKey).values({
     id,
-    projectId: opts.projectId,
+    organizationId: opts.organizationId,
     name: opts.name ?? "Agent credential",
     keyPrefix: raw.slice(0, 20),
     keyHash: hashApiKey(raw),
-    environment: "live",
     scopes: opts.scopes,
     expiresAt,
     createdByAgent: true,

@@ -1,16 +1,20 @@
 import { eq, and, isNotNull, desc } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
-import { user, project, agentRegistration } from "@/lib/db/schema";
-import { newId, newUserId } from "@/lib/api/ids";
+import { user, agentRegistration } from "@/lib/db/schema";
+import { newUserId } from "@/lib/api/ids";
+import {
+  createOrgWithOwner,
+  ensureMember,
+  findOrCreatePrimaryOrg,
+} from "@/lib/orgs/service";
 
-// User matching, JIT provisioning, and principal (project) creation.
+// User matching, JIT provisioning, and principal (organization) creation.
 //
-// The agtls "principal" that owns agent credentials is a project, which must
-// belong to a user. We create an agent-flagged user + project rather than make
-// project.userId nullable (which would ripple through the whole ownership
-// model). On claim we either reuse the JIT user or rebind the project to a
-// matched real user.
+// The agtls "principal" that owns agent credentials is an organization. Every
+// agent gets its own user row (JIT, with a synthetic email when none is
+// available) and joins an org as a member. When an agent is matched to an
+// existing human, the agent user joins the human's primary org — so the human
+// can sign in and see every agent with access to their resources.
 
 export type MatchType = "delegation" | "email" | "jit";
 
@@ -30,11 +34,11 @@ export async function findUserByVerifiedEmail(
 export async function findDelegationPrincipal(
   iss: string,
   sub: string
-): Promise<{ userId: string; projectId: string } | null> {
+): Promise<{ userId: string; organizationId: string } | null> {
   const [reg] = await db
     .select({
       userId: agentRegistration.userId,
-      projectId: agentRegistration.projectId,
+      organizationId: agentRegistration.organizationId,
     })
     .from(agentRegistration)
     .where(
@@ -42,13 +46,13 @@ export async function findDelegationPrincipal(
         eq(agentRegistration.iss, iss),
         eq(agentRegistration.sub, sub),
         isNotNull(agentRegistration.userId),
-        isNotNull(agentRegistration.projectId)
+        isNotNull(agentRegistration.organizationId)
       )
     )
     .orderBy(desc(agentRegistration.createdAt))
     .limit(1);
-  if (reg?.userId && reg?.projectId) {
-    return { userId: reg.userId, projectId: reg.projectId };
+  if (reg?.userId && reg?.organizationId) {
+    return { userId: reg.userId, organizationId: reg.organizationId };
   }
   return null;
 }
@@ -74,33 +78,15 @@ export async function createAgentUser(opts: {
   return id;
 }
 
-export async function createAgentProject(
-  userId: string,
+/**
+ * A fresh org for an unmatched agent. The agent is its owner member until a
+ * human claims it (transferOwnership then demotes the agent to plain member).
+ */
+export async function createAgentOrg(
+  agentUserId: string,
   label = "Agent access"
 ): Promise<string> {
-  const id = newId("project");
-  const now = new Date();
-  const slug = `agent-${nanoid(16).toLowerCase()}`;
-  await db.insert(project).values({
-    id,
-    userId,
-    name: label,
-    slug,
-    createdAt: now,
-    updatedAt: now,
-  });
-  return id;
-}
-
-/** Rebind a project to a different (matched, real) user. */
-export async function reassignProjectOwner(
-  projectId: string,
-  userId: string
-): Promise<void> {
-  await db
-    .update(project)
-    .set({ userId, updatedAt: new Date() })
-    .where(eq(project.id, projectId));
+  return createOrgWithOwner(agentUserId, label);
 }
 
 /** Promote a JIT agent user into a verified user with a real email. */
@@ -114,24 +100,49 @@ export async function promoteAgentUser(
     .where(eq(user.id, userId));
 }
 
+export interface ResolvedPrincipal {
+  /** The agent's own user row — what the registration and credential bind to. */
+  userId: string;
+  organizationId: string;
+  matchType: MatchType;
+  /** The matched human for email matches; otherwise the agent user itself. */
+  claimedByUserId: string;
+}
+
 /**
- * Resolve the principal (user + project) for an agent-verified assertion,
- * following the recommended resolution order: delegation → verified email → JIT.
+ * Resolve the principal (agent user + organization) for an agent-verified
+ * assertion, following the recommended resolution order:
+ * delegation → verified email → JIT.
  */
 export async function resolvePrincipalForAssertion(input: {
   iss: string;
   sub: string;
   email?: string;
   emailVerified?: boolean;
-}): Promise<{ userId: string; projectId: string; matchType: MatchType }> {
+}): Promise<ResolvedPrincipal> {
   const delegation = await findDelegationPrincipal(input.iss, input.sub);
-  if (delegation) return { ...delegation, matchType: "delegation" };
+  if (delegation) {
+    return {
+      ...delegation,
+      matchType: "delegation",
+      claimedByUserId: delegation.userId,
+    };
+  }
 
   if (input.email && input.emailVerified) {
     const matched = await findUserByVerifiedEmail(input.email);
     if (matched) {
-      const projectId = await createAgentProject(matched);
-      return { userId: matched, projectId, matchType: "email" };
+      // The agent gets its own user row (synthetic email — the real one
+      // belongs to the human) and joins the human's primary org as a member.
+      const organizationId = await findOrCreatePrimaryOrg(matched);
+      const agentUserId = await createAgentUser({ name: "Agent (verified)" });
+      await ensureMember(organizationId, agentUserId, "member");
+      return {
+        userId: agentUserId,
+        organizationId,
+        matchType: "email",
+        claimedByUserId: matched,
+      };
     }
   }
 
@@ -140,6 +151,6 @@ export async function resolvePrincipalForAssertion(input: {
     emailVerified: input.emailVerified ?? false,
     name: "Agent (verified)",
   });
-  const projectId = await createAgentProject(userId);
-  return { userId, projectId, matchType: "jit" };
+  const organizationId = await createAgentOrg(userId);
+  return { userId, organizationId, matchType: "jit", claimedByUserId: userId };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { makeRequest, json, routeParams } from "../helpers/request";
-import { seedProject } from "../helpers/seed";
+import { seedOrganization } from "../helpers/seed";
 import { testDb } from "../helpers/db";
 import { task as taskTable, subtask as subtaskTable } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -8,9 +8,9 @@ import { eq } from "drizzle-orm";
 // ─── Tasks collection ────────────────────────────────────────────────────────
 
 describe("GET /api/tasks", () => {
-  it("returns empty list for a new project", async () => {
+  it("returns empty list for a new organization", async () => {
     const { GET } = await import("@/app/api/tasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const res = await GET(makeRequest("/api/tasks", { token: key }));
     expect(res.status).toBe(200);
@@ -40,15 +40,15 @@ describe("GET /api/tasks", () => {
 
   it("returns 401 for expired key", async () => {
     const { GET } = await import("@/app/api/tasks/route");
-    const { key } = await seedProject({ expiresAt: new Date(Date.now() - 1000) });
+    const { key } = await seedOrganization({ expiresAt: new Date(Date.now() - 1000) });
     const res = await GET(makeRequest("/api/tasks", { token: key }));
     expect(res.status).toBe(401);
   });
 
-  it("isolates owned tasks between projects", async () => {
+  it("isolates owned tasks between organizations", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     await POST(makeRequest("/api/tasks", { body: { name: "Task A" }, token: a.key }));
     const res = await GET(makeRequest("/api/tasks", { token: b.key }));
@@ -58,7 +58,7 @@ describe("GET /api/tasks", () => {
 
   it("does not return owned tasks to unauthenticated requests", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     await POST(makeRequest("/api/tasks", { body: { name: "Owned" }, token: key }));
     const res = await GET(makeRequest("/api/tasks"));
@@ -66,14 +66,14 @@ describe("GET /api/tasks", () => {
     expect(body.data).toHaveLength(0);
   });
 
-  it("returns public tasks to unauthenticated requests", async () => {
+  it("does not enumerate public tasks to unauthenticated requests", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
 
+    // Public resources stay reachable by ID but are never enumerable.
     await POST(makeRequest("/api/tasks", { body: { name: "Public" } }));
     const res = await GET(makeRequest("/api/tasks"));
-    const body = await json<{ data: { name: string }[] }>(res);
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0].name).toBe("Public");
+    const body = await json<{ data: unknown[] }>(res);
+    expect(body.data).toHaveLength(0);
   });
 
   it("clamps limit to max 100", async () => {
@@ -91,7 +91,7 @@ describe("GET /api/tasks", () => {
 
   it("returns has_more and next_cursor when there are more items", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     // Create 3 tasks, request limit=2
     for (let i = 0; i < 3; i++) {
@@ -107,7 +107,7 @@ describe("GET /api/tasks", () => {
 
   it("paginates with after cursor", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     // Create 3 tasks with slightly different timestamps
     const ids: string[] = [];
@@ -151,21 +151,21 @@ describe("POST /api/tasks", () => {
     const { POST } = await import("@/app/api/tasks/route");
     const res = await POST(makeRequest("/api/tasks", { body: { name: "Public task" } }));
     expect(res.status).toBe(201);
-    const body = await json<{ id: string; object: string; project_id: unknown; name: string }>(res);
+    const body = await json<{ id: string; object: string; organization_id: unknown; name: string }>(res);
     expect(body.id).toMatch(/^tsk_/);
     expect(body.object).toBe("task");
-    expect(body.project_id).toBeNull();
+    expect(body.organization_id).toBeNull();
     expect(body.name).toBe("Public task");
   });
 
   it("creates an owned task with auth", async () => {
     const { POST } = await import("@/app/api/tasks/route");
-    const { key, projectId } = await seedProject();
+    const { key, organizationId } = await seedOrganization();
 
     const res = await POST(makeRequest("/api/tasks", { body: { name: "Owned task" }, token: key }));
     expect(res.status).toBe(201);
-    const body = await json<{ id: string; project_id: string; name: string }>(res);
-    expect(body.project_id).toBe(projectId);
+    const body = await json<{ id: string; organization_id: string; name: string }>(res);
+    expect(body.organization_id).toBe(organizationId);
   });
 
   it("returns 401 for invalid token", async () => {
@@ -178,7 +178,7 @@ describe("POST /api/tasks", () => {
 
   it("returns 401 for expired key", async () => {
     const { POST } = await import("@/app/api/tasks/route");
-    const { key } = await seedProject({ expiresAt: new Date(Date.now() - 1000) });
+    const { key } = await seedOrganization({ expiresAt: new Date(Date.now() - 1000) });
     const res = await POST(makeRequest("/api/tasks", { body: { name: "Fail" }, token: key }));
     expect(res.status).toBe(401);
   });
@@ -260,10 +260,10 @@ describe("GET /api/tasks/[id]", () => {
     expect(body.name).toBe("Public");
   });
 
-  it("returns an owned task to the owning project", async () => {
+  it("returns an owned task to the owning organization", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { GET } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Mine" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -281,11 +281,11 @@ describe("GET /api/tasks/[id]", () => {
     expect(body.error.code).toBe("resource_not_found");
   });
 
-  it("returns 403 when another project accesses an owned task", async () => {
+  it("returns 403 when another organization accesses an owned task", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { GET } = await import("@/app/api/tasks/[id]/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "A's task" }, token: a.key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -299,7 +299,7 @@ describe("GET /api/tasks/[id]", () => {
   it("returns 403 when unauthenticated request accesses owned task", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { GET } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Private" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -330,6 +330,8 @@ describe("GET /api/tasks/[id]", () => {
     expect(ct).toContain("text/html");
     const html = await res.text();
     expect(html).toContain("<!DOCTYPE html");
+    // Resource JSON is highlighted by Shiki (github-dark-default theme).
+    expect(html).toContain('class="shiki github-dark-default"');
   });
 });
 
@@ -337,7 +339,7 @@ describe("PATCH /api/tasks/[id]", () => {
   it("updates task name", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { PATCH } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Original" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -354,7 +356,7 @@ describe("PATCH /api/tasks/[id]", () => {
   it("updates task description", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { PATCH } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -377,11 +379,11 @@ describe("PATCH /api/tasks/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 for cross-project access", async () => {
+  it("returns 403 for cross-organization access", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { PATCH } = await import("@/app/api/tasks/[id]/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "A task" }, token: a.key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -396,7 +398,7 @@ describe("PATCH /api/tasks/[id]", () => {
   it("returns 400 for invalid patch body", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { PATCH } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -411,7 +413,7 @@ describe("PATCH /api/tasks/[id]", () => {
   it("redirects after PATCH when Accept: text/html", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { PATCH } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -432,7 +434,7 @@ describe("PATCH /api/tasks/[id]", () => {
   it("persists changes in DB", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { PATCH } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Before" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -451,7 +453,7 @@ describe("DELETE /api/tasks/[id]", () => {
   it("deletes a task and returns 204", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { DELETE } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "ToDelete" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -476,11 +478,11 @@ describe("DELETE /api/tasks/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 for cross-project delete", async () => {
+  it("returns 403 for cross-organization delete", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { DELETE } = await import("@/app/api/tasks/[id]/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "A task" }, token: a.key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -499,7 +501,7 @@ describe("DELETE /api/tasks/[id]", () => {
   it("redirects after DELETE when Accept: text/html", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { DELETE } = await import("@/app/api/tasks/[id]/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -537,7 +539,7 @@ describe("GET /api/tasks/[id]/subtasks", () => {
   it("returns empty subtask list for a new task", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { GET } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -555,11 +557,11 @@ describe("GET /api/tasks/[id]/subtasks", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 for owned task accessed by wrong project", async () => {
+  it("returns 403 for owned task accessed by wrong organization", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { GET } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "A task" }, token: a.key }));
     const { id } = await json<{ id: string }>(createRes);
@@ -577,7 +579,7 @@ describe("GET /api/tasks/[id]/subtasks", () => {
   it("lists subtasks created under a task", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { GET: subtasksGet, POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Parent" }, token: key }));
     const { id: taskId } = await json<{ id: string }>(taskRes);
@@ -603,7 +605,7 @@ describe("GET /api/tasks/[id]/subtasks", () => {
   it("serves HTML for subtask list", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { GET: subtasksGet } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(taskRes);
@@ -621,7 +623,7 @@ describe("POST /api/tasks/[id]/subtasks", () => {
   it("creates a subtask under a task", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key, projectId } = await seedProject();
+    const { key, organizationId } = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Parent" }, token: key }));
     const { id: taskId } = await json<{ id: string }>(taskRes);
@@ -631,11 +633,11 @@ describe("POST /api/tasks/[id]/subtasks", () => {
       routeParams({ id: taskId })
     );
     expect(res.status).toBe(201);
-    const body = await json<{ id: string; object: string; task_id: string; project_id: string }>(res);
+    const body = await json<{ id: string; object: string; task_id: string; organization_id: string }>(res);
     expect(body.id).toMatch(/^sub_/);
     expect(body.object).toBe("subtask");
     expect(body.task_id).toBe(taskId);
-    expect(body.project_id).toBe(projectId);
+    expect(body.organization_id).toBe(organizationId);
   });
 
   it("returns 404 for non-existent parent task", async () => {
@@ -650,7 +652,7 @@ describe("POST /api/tasks/[id]/subtasks", () => {
   it("returns 400 when title is missing", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(taskRes);
@@ -662,11 +664,11 @@ describe("POST /api/tasks/[id]/subtasks", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 403 for wrong project creating subtask under owned task", async () => {
+  it("returns 403 for wrong organization creating subtask under owned task", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "A task" }, token: a.key }));
     const { id } = await json<{ id: string }>(taskRes);
@@ -681,7 +683,7 @@ describe("POST /api/tasks/[id]/subtasks", () => {
   it("redirects to subtask page after POST with text/html", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(taskRes);
@@ -701,7 +703,7 @@ describe("POST /api/tasks/[id]/subtasks", () => {
   it("creates subtask with default status=todo and priority=medium", async () => {
     const { POST: taskPost } = await import("@/app/api/tasks/route");
     const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
 
     const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id: taskId } = await json<{ id: string }>(taskRes);

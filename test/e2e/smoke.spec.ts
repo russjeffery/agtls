@@ -54,5 +54,5 @@ test("email-verification claim ceremony works through the browser", async ({
   expect(complete.status()).toBe(200);
   const body = (await complete.json()) as { status: string; credential: string };
   expect(body.status).toBe("claimed");
-  expect(body.credential).toMatch(/^agt_live_/);
+  expect(body.credential).toMatch(/^agt_/);
 });

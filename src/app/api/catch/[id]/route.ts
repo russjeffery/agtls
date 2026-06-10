@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, desc, count, asc } from "drizzle-orm";
+import { eq, count, asc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { webhookEndpoint, webhookEvent } from "@/lib/db/schema";
 import { newId } from "@/lib/api/ids";
@@ -96,7 +96,7 @@ async function handleWebhook(
   await db.insert(webhookEvent).values({
     id: eventId,
     endpointId: endpoint.id,
-    projectId: endpoint.projectId,
+    organizationId: endpoint.organizationId,
     method,
     path,
     headers: capturedHeaders,

@@ -1,44 +1,34 @@
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { subtask } from "@/lib/db/schema";
-import { resolveAuth } from "@/lib/api/middleware";
+import {
+  resolveViewer,
+  viewerCanAccess,
+  viewerUser,
+  type Viewer,
+} from "@/lib/api/middleware";
 import { ok, noContent, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeSubtask } from "@/lib/api/serialize";
 import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
+import { htmlResponse, errorHtmlResponse } from "@/lib/api/html";
+import { subtaskPatchSchema as patchSchema } from "@/lib/api/schemas";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-const patchSchema = z.object({
-  title: z.string().min(1).max(500).optional(),
-  description: z.string().nullable().optional(),
-  status: z
-    .enum(["todo", "in_progress", "done", "cancelled"])
-    .optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  assignee: z.string().nullable().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  due_at: z.number().int().nullable().optional(),
-  task_id: z.string().nullable().optional(),
-});
-
 function checkOwnership(
   row: typeof subtask.$inferSelect | undefined,
-  authProjectId: string | null | undefined
+  viewer: Viewer
 ): { row: typeof subtask.$inferSelect; allowed: boolean } | { row: null; allowed: false } {
   if (!row) return { row: null, allowed: false };
-  if (row.projectId === null) return { row, allowed: true };
-  if (row.projectId === authProjectId) return { row, allowed: true };
-  return { row, allowed: false };
+  return { row, allowed: viewerCanAccess(row.organizationId, viewer) };
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -54,9 +44,36 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     .where(eq(subtask.id, id))
     .limit(1);
 
-  const { row: found, allowed } = checkOwnership(row, auth?.projectId);
-  if (!found) return errorResponse(errors.notFound("subtask", id), 404);
-  if (!allowed) return errorResponse(errors.forbidden(), 403);
+  const { row: found, allowed } = checkOwnership(row, viewer);
+  if (!found) {
+    if (wantsHtml(request)) {
+      return errorHtmlResponse(
+        {
+          status: 404,
+          title: "Subtask not found",
+          message: `No subtask with ID '${id}' exists. It may have been deleted.`,
+          user: viewerUser(viewer),
+        },
+        request
+      );
+    }
+    return errorResponse(errors.notFound("subtask", id), 404);
+  }
+  if (!allowed) {
+    if (wantsHtml(request)) {
+      return errorHtmlResponse(
+        {
+          status: 403,
+          title: "You don't have access to this subtask",
+          message:
+            "This subtask belongs to another organization. Sign in with an account that's a member of the owning organization, or use its API key.",
+          user: viewerUser(viewer),
+        },
+        request
+      );
+    }
+    return errorResponse(errors.forbidden(), 403);
+  }
 
   const serialized = serializeSubtask(found);
   const taskId = found.taskId;
@@ -66,8 +83,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       {
         title: found.id,
         objectType: "subtask",
+        user: viewerUser(viewer),
         breadcrumb: [
-          { label: "API", href: "/" },
+          { label: "API", href: "/api" },
           taskId
             ? { label: taskId, href: `/api/tasks/${taskId}` }
             : { label: "subtasks", href: "/api/subtasks" },
@@ -102,9 +120,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -120,7 +138,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     .where(eq(subtask.id, id))
     .limit(1);
 
-  const { row: found, allowed } = checkOwnership(row, auth?.projectId);
+  const { row: found, allowed } = checkOwnership(row, viewer);
   if (!found) return errorResponse(errors.notFound("subtask", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 
@@ -174,9 +192,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -192,7 +210,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     .where(eq(subtask.id, id))
     .limit(1);
 
-  const { row: found, allowed } = checkOwnership(row, auth?.projectId);
+  const { row: found, allowed } = checkOwnership(row, viewer);
   if (!found) return errorResponse(errors.notFound("subtask", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 

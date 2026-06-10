@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
         source: "/auth.md",
         destination: "/api/discovery/auth-md",
       },
+      {
+        source: "/skill.md",
+        destination: "/api/discovery/agent-skill",
+      },
     ];
   },
 };

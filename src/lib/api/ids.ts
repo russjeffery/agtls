@@ -1,12 +1,16 @@
 import { nanoid } from "nanoid";
 
 const prefixes = {
-  project: "prj",
+  organization: "org",
+  member: "mem",
+  invitation: "inv",
   apiKey: "agt",
   task: "tsk",
   subtask: "sub",
   webhookEndpoint: "wh",
   webhookEvent: "whe",
+  memory: "memo",
+  scheduledMessage: "msg",
   agentRegistration: "reg",
   agentAuditEvent: "evt",
   claimAttempt: "cla",
@@ -18,9 +22,9 @@ export function newId(type: Prefix): string {
   return `${prefixes[type]}_${nanoid(24)}`;
 }
 
-export function newApiKey(environment: "live" | "test"): string {
-  // agt_live_<24 chars> — shown once, then hashed
-  return `agt_${environment}_${nanoid(24)}`;
+export function newApiKey(): string {
+  // agt_<24 chars> — shown once, then hashed
+  return `agt_${nanoid(24)}`;
 }
 
 // BetterAuth-style opaque user id for JIT-provisioned agent users. We insert

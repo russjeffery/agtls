@@ -13,7 +13,7 @@ test("anonymous claim ceremony: register → claim → reveal OTP → complete",
 
   // 1. Agent registers anonymously and gets an immediate pre-claim credential.
   const { claim_token, credential } = await startAnonymousRegistration(request);
-  expect(credential).toMatch(/^agt_live_/);
+  expect(credential).toMatch(/^agt_/);
 
   // The pre-claim credential authenticates against the resource API.
   const readBefore = await request.get("/api/tasks", {

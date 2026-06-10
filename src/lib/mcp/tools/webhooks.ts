@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, desc, lt, and, isNull, count } from "drizzle-orm";
+import { eq, desc, lt, and, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { webhookEndpoint, webhookEvent } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
@@ -9,6 +9,7 @@ import {
   serializeWebhookEndpoint,
   serializeWebhookEvent,
 } from "@/lib/api/serialize";
+import { mintResourceClaimToken } from "@/lib/api/claim";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
@@ -24,11 +25,11 @@ async function getAuth(apiKey?: string) {
 
 function canAccess(
   endpoint: typeof webhookEndpoint.$inferSelect,
-  auth: { projectId: string } | null
+  auth: { organizationId: string } | null
 ): boolean {
-  if (endpoint.projectId === null) return true;
+  if (endpoint.organizationId === null) return true;
   if (!auth) return false;
-  return auth.projectId === endpoint.projectId;
+  return auth.organizationId === endpoint.organizationId;
 }
 
 // ─── Shared error text ────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ export function webhookTools(server: McpServer): void {
   // ── webhook_endpoints_list ──────────────────────────────────────────────────
   server.tool(
     "webhook_endpoints_list",
-    "List webhook endpoints. Returns endpoints owned by the authenticated project, or public endpoints if no API key is provided.",
+    "List webhook endpoints. Returns endpoints owned by the authenticated organization, or public endpoints if no API key is provided.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
       limit: z.number().int().min(1).max(100).optional().default(20).describe("Number of results (1–100, default 20)."),
@@ -57,9 +58,13 @@ export function webhookTools(server: McpServer): void {
         return errorText(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const ownershipCondition = auth
-        ? eq(webhookEndpoint.projectId, auth.projectId)
-        : isNull(webhookEndpoint.projectId);
+      // Anonymous callers can't enumerate endpoints (mirrors GET /api/webhooks);
+      // public endpoints stay reachable by ID via webhook_endpoints_get.
+      if (!auth) {
+        const empty = { object: "list", data: [], has_more: false, next_cursor: null };
+        return { content: [{ type: "text" as const, text: JSON.stringify(empty, null, 2) }] };
+      }
+      const ownershipCondition = eq(webhookEndpoint.organizationId, auth.organizationId);
 
       let cursorCondition;
       if (after) {
@@ -167,24 +172,32 @@ export function webhookTools(server: McpServer): void {
       const id = newId("webhookEndpoint");
       const now = new Date();
 
+      // Public creation gets a claim token usable later via the claim tool.
+      const claim = auth ? null : mintResourceClaimToken();
+
       const [row] = await db
         .insert(webhookEndpoint)
         .values({
           id,
-          projectId: auth ? auth.projectId : null,
+          organizationId: auth ? auth.organizationId : null,
           name,
           description: description ?? null,
           maxEvents: max_events ?? null,
+          claimTokenHash: claim?.hash ?? null,
           createdAt: now,
           updatedAt: now,
         })
         .returning();
 
+      const data = claim
+        ? { ...serializeWebhookEndpoint(row), claim_token: claim.token }
+        : serializeWebhookEndpoint(row);
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(serializeWebhookEndpoint(row), null, 2),
+            text: JSON.stringify(data, null, 2),
           },
         ],
       };

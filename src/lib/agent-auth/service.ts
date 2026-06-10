@@ -31,11 +31,15 @@ import { enforceRateLimit } from "./rate-limit";
 import {
   resolvePrincipalForAssertion,
   createAgentUser,
-  createAgentProject,
+  createAgentOrg,
   findUserByVerifiedEmail,
-  reassignProjectOwner,
   promoteAgentUser,
 } from "./users";
+import {
+  ensureMember,
+  findOrCreatePrimaryOrg,
+  transferOwnership,
+} from "@/lib/orgs/service";
 import {
   issueCredential,
   upgradeCredentialScopes,
@@ -143,7 +147,7 @@ async function registerAgentVerified(
   const regId = newId("agentRegistration");
   const scopes = [...POST_CLAIM_SCOPES];
   const cred = await issueCredential({
-    projectId: principal.projectId,
+    organizationId: principal.organizationId,
     credentialType: requestedCredentialType,
     scopes,
     registrationId: regId,
@@ -156,7 +160,7 @@ async function registerAgentVerified(
     type: "agent-provider",
     status: "active",
     requestedCredentialType,
-    projectId: principal.projectId,
+    organizationId: principal.organizationId,
     userId: principal.userId,
     apiKeyId: cred.apiKeyId,
     postClaimScopes: scopes,
@@ -166,7 +170,7 @@ async function registerAgentVerified(
     aud: verified.aud,
     agentPlatform: verified.agentPlatform ?? null,
     agentContextId: verified.agentContextId ?? null,
-    claimedByUserId: principal.userId,
+    claimedByUserId: principal.claimedByUserId,
     claimedAt: now,
     registrationIp: ctx.ip ?? null,
     createdAt: now,
@@ -210,12 +214,15 @@ async function registerAnonymous(
 
   const regId = newId("agentRegistration");
   const userId = await createAgentUser({ name: "Agent (unclaimed)" });
-  const projectId = await createAgentProject(userId, "Agent access (unclaimed)");
+  const organizationId = await createAgentOrg(
+    userId,
+    "Agent access (unclaimed)"
+  );
 
   const preScopes = [...PRE_CLAIM_SCOPES];
   const postScopes = [...POST_CLAIM_SCOPES];
   const cred = await issueCredential({
-    projectId,
+    organizationId,
     credentialType: "api_key",
     scopes: preScopes,
     registrationId: regId,
@@ -233,7 +240,7 @@ async function registerAnonymous(
     type: "anonymous",
     status: "unclaimed",
     requestedCredentialType: "api_key",
-    projectId,
+    organizationId,
     userId,
     apiKeyId: cred.apiKeyId,
     preClaimScopes: preScopes,
@@ -546,12 +553,15 @@ async function completeAnonymous(
 
   if (email) {
     const matched = await findUserByVerifiedEmail(email);
-    if (matched && reg.projectId) {
-      // Re-home the principal under the matched real user.
-      await reassignProjectOwner(reg.projectId, matched);
+    if (matched && reg.organizationId) {
+      // The matched human takes over the agent's org; the agent stays in it
+      // as a plain member so the human sees it on their dashboard.
+      await transferOwnership(reg.organizationId, matched, reg.userId!);
       claimedByUserId = matched;
     } else {
-      // Promote the JIT agent user to a real, verified user.
+      // Promote the JIT agent user to a real, verified user. It keeps owning
+      // its org — if the human signs up with this email later, account
+      // linking attaches them to this very user row.
       await promoteAgentUser(reg.userId!, email);
     }
   }
@@ -578,27 +588,37 @@ async function completeAnonymous(
   return { registration_id: reg.id, status: "claimed" };
 }
 
-// Email required: provision/match the user now and issue a fresh credential.
+// Email required: provision the agent user now and issue a fresh credential.
 async function completeEmailRequired(
   reg: Registration
 ): Promise<Record<string, unknown>> {
   const email = reg.email!;
   const matched = await findUserByVerifiedEmail(email);
 
-  let userId: string;
+  // The agent always gets its own user row. When the email matches a human,
+  // the agent joins the human's primary org as a member (with a synthetic
+  // email — the real one belongs to the human); otherwise the agent user
+  // carries the verified email and owns a fresh org.
+  let agentUserId: string;
+  let organizationId: string;
+  let claimedByUserId: string;
   if (matched) {
-    userId = matched;
+    organizationId = await findOrCreatePrimaryOrg(matched);
+    agentUserId = await createAgentUser({ name: "Agent (claimed)" });
+    await ensureMember(organizationId, agentUserId, "member");
+    claimedByUserId = matched;
   } else {
-    userId = await createAgentUser({
+    agentUserId = await createAgentUser({
       email,
       emailVerified: true,
       name: "Agent (claimed)",
     });
+    organizationId = await createAgentOrg(agentUserId);
+    claimedByUserId = agentUserId;
   }
-  const projectId = await createAgentProject(userId);
 
   const cred = await issueCredential({
-    projectId,
+    organizationId,
     credentialType: reg.requestedCredentialType,
     scopes: reg.postClaimScopes,
     registrationId: reg.id,
@@ -609,10 +629,10 @@ async function completeEmailRequired(
     .update(agentRegistration)
     .set({
       status: "claimed",
-      projectId,
-      userId,
+      organizationId,
+      userId: agentUserId,
       apiKeyId: cred.apiKeyId,
-      claimedByUserId: userId,
+      claimedByUserId,
       claimedAt: new Date(),
       updatedAt: new Date(),
     })
@@ -620,7 +640,7 @@ async function completeEmailRequired(
 
   await recordAuditEvent("claim.confirmed", {
     registrationId: reg.id,
-    data: { claimed_by_user_id: userId },
+    data: { claimed_by_user_id: claimedByUserId },
   });
 
   return {

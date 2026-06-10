@@ -1,42 +1,41 @@
 import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
-import { z } from "zod";
+import { eq, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { task } from "@/lib/db/schema";
-import { resolveAuth } from "@/lib/api/middleware";
+import { task, subtask } from "@/lib/db/schema";
+import {
+  resolveViewer,
+  viewerCanAccess,
+  viewerUser,
+  type Viewer,
+} from "@/lib/api/middleware";
 import { ok, noContent, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
-import { serializeTask } from "@/lib/api/serialize";
+import { serializeTask, serializeSubtask } from "@/lib/api/serialize";
 import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
+import { htmlResponse, errorHtmlResponse } from "@/lib/api/html";
+import { taskPatchSchema as patchSchema } from "@/lib/api/schemas";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-const patchSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  description: z.string().nullable().optional(),
-});
 
 /**
  * Check whether the caller is allowed to access this task.
  * - Row doesn't exist: returns { row: null, allowed: false }
- * - Row is public (projectId=null): anyone can access
- * - Row has projectId: caller must be authenticated with matching projectId
+ * - Row is public (organizationId=null): anyone can access
+ * - Row has organizationId: caller needs a matching API key or a session
+ *   belonging to a member of the owning org
  */
 function checkOwnership(
   row: typeof task.$inferSelect | undefined,
-  authProjectId: string | null | undefined
+  viewer: Viewer
 ): { row: typeof task.$inferSelect; allowed: boolean } | { row: null; allowed: false } {
   if (!row) return { row: null, allowed: false };
-  if (row.projectId === null) return { row, allowed: true };
-  if (row.projectId === authProjectId) return { row, allowed: true };
-  return { row, allowed: false };
+  return { row, allowed: viewerCanAccess(row.organizationId, viewer) };
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -52,23 +51,89 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     .where(eq(task.id, id))
     .limit(1);
 
-  const { row: found, allowed } = checkOwnership(row, auth?.projectId);
-  if (!found) return errorResponse(errors.notFound("task", id), 404);
-  if (!allowed) return errorResponse(errors.forbidden(), 403);
+  const { row: found, allowed } = checkOwnership(row, viewer);
+  if (!found) {
+    if (wantsHtml(request)) {
+      return errorHtmlResponse(
+        {
+          status: 404,
+          title: "Task not found",
+          message: `No task with ID '${id}' exists. It may have been deleted.`,
+          user: viewerUser(viewer),
+        },
+        request
+      );
+    }
+    return errorResponse(errors.notFound("task", id), 404);
+  }
+  if (!allowed) {
+    if (wantsHtml(request)) {
+      return errorHtmlResponse(
+        {
+          status: 403,
+          title: "You don't have access to this task",
+          message:
+            "This task belongs to another organization. Sign in with an account that's a member of the owning organization, or use its API key.",
+          user: viewerUser(viewer),
+        },
+        request
+      );
+    }
+    return errorResponse(errors.forbidden(), 403);
+  }
 
   const serialized = serializeTask(found);
 
   if (wantsHtml(request)) {
+    const subtaskRows = await db
+      .select()
+      .from(subtask)
+      .where(eq(subtask.taskId, found.id))
+      .orderBy(desc(subtask.createdAt))
+      .limit(5);
+
     return htmlResponse(
       {
         title: found.id,
         objectType: "task",
         breadcrumb: [
-          { label: "API", href: "/" },
+          { label: "API", href: "/api" },
           { label: "tasks", href: "/api/tasks" },
           { label: found.id },
         ],
+        user: viewerUser(viewer),
         resource: serialized,
+        childList: {
+          title: "Subtasks",
+          items: subtaskRows.map(serializeSubtask) as Record<string, unknown>[],
+          columns: [
+            { key: "id", label: "ID", mono: true },
+            { key: "title", label: "Title" },
+            {
+              key: "status",
+              label: "Status",
+              badge: {
+                todo: "#a1a1aa",
+                in_progress: "#60a5fa",
+                done: "#34d399",
+                cancelled: "#71717a",
+              },
+            },
+            {
+              key: "priority",
+              label: "Priority",
+              badge: {
+                low: "#71717a",
+                medium: "#fbbf24",
+                high: "#fb923c",
+                urgent: "#f87171",
+              },
+            },
+          ],
+          itemHref: (item) => `/api/subtasks/${(item as { id: string }).id}`,
+          viewAllHref: `/api/tasks/${found.id}/subtasks`,
+          emptyMessage: "No subtasks yet.",
+        },
         apiRef: [
           {
             method: "GET",
@@ -100,9 +165,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -118,7 +183,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     .where(eq(task.id, id))
     .limit(1);
 
-  const { row: found, allowed } = checkOwnership(row, auth?.projectId);
+  const { row: found, allowed } = checkOwnership(row, viewer);
   if (!found) return errorResponse(errors.notFound("task", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 
@@ -153,9 +218,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -171,7 +236,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     .where(eq(task.id, id))
     .limit(1);
 
-  const { row: found, allowed } = checkOwnership(row, auth?.projectId);
+  const { row: found, allowed } = checkOwnership(row, viewer);
   if (!found) return errorResponse(errors.notFound("task", id), 404);
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 

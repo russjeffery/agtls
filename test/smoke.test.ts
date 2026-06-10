@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { newId, newApiKey } from "@/lib/api/ids";
 import { makeRequest, json } from "./helpers/request";
-import { seedProject } from "./helpers/seed";
+import { seedOrganization } from "./helpers/seed";
 import { lastClaimViewToken, sentEmails } from "./helpers/email";
 import { useTrustedProvider, mintIdJag } from "./helpers/agent-auth";
 
@@ -11,35 +11,35 @@ import { useTrustedProvider, mintIdJag } from "./helpers/agent-auth";
 describe("harness: pure unit", () => {
   it("mints prefixed ids and keys", () => {
     expect(newId("task")).toMatch(/^tsk_/);
-    expect(newApiKey("live")).toMatch(/^agt_live_/);
+    expect(newApiKey()).toMatch(/^agt_/);
   });
 });
 
 describe("harness: DB-backed route", () => {
   it("creates and reads a task scoped to an API key", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
-    const { key, projectId } = await seedProject();
+    const { key, organizationId } = await seedOrganization();
 
     const createRes = await POST(
       makeRequest("/api/tasks", { body: { name: "Ship it" }, token: key })
     );
     expect(createRes.status).toBe(201);
-    const task = await json<{ id: string; project_id: string; object: string }>(
+    const task = await json<{ id: string; organization_id: string; object: string }>(
       createRes
     );
     expect(task.id).toMatch(/^tsk_/);
     expect(task.object).toBe("task");
-    expect(task.project_id).toBe(projectId);
+    expect(task.organization_id).toBe(organizationId);
 
     const listRes = await GET(makeRequest("/api/tasks", { token: key }));
     const list = await json<{ data: { id: string }[] }>(listRes);
     expect(list.data.map((t) => t.id)).toContain(task.id);
   });
 
-  it("isolates resources between projects", async () => {
+  it("isolates resources between organizations", async () => {
     const { POST, GET } = await import("@/app/api/tasks/route");
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
 
     await POST(makeRequest("/api/tasks", { body: { name: "A only" }, token: a.key }));
 
@@ -67,7 +67,7 @@ describe("harness: agent-verified flow (JWKS + email stubs)", () => {
     );
     expect(res.status).toBe(201);
     const body = await json<{ credential: string; scopes: string[] }>(res);
-    expect(body.credential).toMatch(/^agt_live_/);
+    expect(body.credential).toMatch(/^agt_/);
     expect(body.scopes).toEqual(["api.read", "api.write"]);
 
     // The issued credential should authenticate against the resource API.
@@ -78,25 +78,25 @@ describe("harness: agent-verified flow (JWKS + email stubs)", () => {
 });
 
 describe("harness: session-guarded route", () => {
-  it("rejects without a session and creates a project with one", async () => {
-    const { POST } = await import("@/app/api/projects/route");
+  it("rejects without a session and creates an organization with one", async () => {
+    const { POST } = await import("@/app/api/organizations/route");
     const { mockNoSession, mockSession } = await import("./helpers/session");
 
     mockNoSession();
     const anon = await POST(
-      makeRequest("/api/projects", { body: { name: "X", slug: "x-proj" } })
+      makeRequest("/api/organizations", { body: { name: "X", slug: "x-org" } })
     );
     expect(anon.status).toBe(401);
 
-    const { userId } = await seedProject();
+    const { userId } = await seedOrganization();
     mockSession(userId);
     const res = await POST(
-      makeRequest("/api/projects", { body: { name: "My Proj", slug: "my-proj" } })
+      makeRequest("/api/organizations", { body: { name: "My Org", slug: "my-org" } })
     );
     expect(res.status).toBe(201);
-    const proj = await json<{ object: string; slug: string }>(res);
-    expect(proj.object).toBe("project");
-    expect(proj.slug).toBe("my-proj");
+    const org = await json<{ object: string; slug: string }>(res);
+    expect(org.object).toBe("organization");
+    expect(org.slug).toBe("my-org");
   });
 });
 

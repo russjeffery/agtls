@@ -10,7 +10,7 @@ import {
   serializeSubtask,
   serializeWebhookEndpoint,
   serializeWebhookEvent,
-  serializeProject,
+  serializeOrganization,
   serializeApiKey,
 } from "@/lib/api/serialize";
 import {
@@ -55,7 +55,7 @@ describe("serializeTask", () => {
   const now = new Date("2024-06-01T12:00:00Z");
   const row = {
     id: "tsk_abc123",
-    projectId: "prj_xyz",
+    organizationId: "org_xyz",
     name: "My Task",
     description: "do the thing",
     createdAt: now,
@@ -68,15 +68,15 @@ describe("serializeTask", () => {
 
   it("uses snake_case keys", () => {
     const s = serializeTask(row);
-    expect(s).toHaveProperty("project_id");
+    expect(s).toHaveProperty("organization_id");
     expect(s).toHaveProperty("created_at");
     expect(s).toHaveProperty("updated_at");
-    expect(s).not.toHaveProperty("projectId");
+    expect(s).not.toHaveProperty("organizationId");
     expect(s).not.toHaveProperty("createdAt");
   });
 
-  it("passes through project_id", () => {
-    expect(serializeTask(row).project_id).toBe("prj_xyz");
+  it("passes through organization_id", () => {
+    expect(serializeTask(row).organization_id).toBe("org_xyz");
   });
 
   it("converts dates to Unix timestamps", () => {
@@ -92,7 +92,7 @@ describe("serializeSubtask", () => {
   const now = new Date("2024-06-01T12:00:00Z");
   const baseRow = {
     id: "sub_abc",
-    projectId: "prj_xyz",
+    organizationId: "org_xyz",
     taskId: "tsk_abc",
     title: "Subtask title",
     description: null,
@@ -128,7 +128,7 @@ describe("serializeSubtask", () => {
   it("uses snake_case keys", () => {
     const s = serializeSubtask(baseRow);
     expect(s).toHaveProperty("task_id");
-    expect(s).toHaveProperty("project_id");
+    expect(s).toHaveProperty("organization_id");
     expect(s).not.toHaveProperty("taskId");
   });
 });
@@ -139,7 +139,7 @@ describe("serializeWebhookEndpoint", () => {
   const now = new Date("2024-06-01T12:00:00Z");
   const row = {
     id: "wh_endpoint1",
-    projectId: "prj_xyz",
+    organizationId: "org_xyz",
     name: "My Webhook",
     description: null,
     maxEvents: null,
@@ -182,7 +182,7 @@ describe("serializeWebhookEvent", () => {
   const row = {
     id: "whe_ev1",
     endpointId: "wh_endpoint1",
-    projectId: "prj_xyz",
+    organizationId: "org_xyz",
     method: "POST",
     path: "/api/catch/wh_endpoint1",
     headers: { "content-type": "application/json" },
@@ -202,8 +202,8 @@ describe("serializeWebhookEvent", () => {
     expect(serializeWebhookEvent(row).endpoint_id).toBe("wh_endpoint1");
   });
 
-  it("has snake_case project_id", () => {
-    expect(serializeWebhookEvent(row).project_id).toBe("prj_xyz");
+  it("has snake_case organization_id", () => {
+    expect(serializeWebhookEvent(row).organization_id).toBe("org_xyz");
   });
 
   it("converts receivedAt to unix", () => {
@@ -211,33 +211,31 @@ describe("serializeWebhookEvent", () => {
   });
 });
 
-// ─── serializeProject ──────────────────────────────────────────────────────
+// ─── serializeOrganization ──────────────────────────────────────────────────────
 
-describe("serializeProject", () => {
+describe("serializeOrganization", () => {
   const now = new Date("2024-06-01T12:00:00Z");
   const row = {
-    id: "prj_abc",
-    userId: "user_xyz",
-    name: "My Project",
-    slug: "my-project",
+    id: "org_abc",
+    name: "My Org",
+    slug: "my-org",
     createdAt: now,
-    updatedAt: now,
   };
 
-  it("has object field === 'project'", () => {
-    expect(serializeProject(row).object).toBe("project");
+  it("has object field === 'organization'", () => {
+    expect(serializeOrganization(row).object).toBe("organization");
   });
 
   it("does not expose userId", () => {
-    const s = serializeProject(row) as Record<string, unknown>;
+    const s = serializeOrganization(row) as Record<string, unknown>;
     expect(s).not.toHaveProperty("userId");
     expect(s).not.toHaveProperty("user_id");
   });
 
   it("exposes name and slug", () => {
-    const s = serializeProject(row);
-    expect(s.name).toBe("My Project");
-    expect(s.slug).toBe("my-project");
+    const s = serializeOrganization(row);
+    expect(s.name).toBe("My Org");
+    expect(s.slug).toBe("my-org");
   });
 });
 
@@ -247,10 +245,9 @@ describe("serializeApiKey", () => {
   const now = new Date("2024-06-01T12:00:00Z");
   const row = {
     id: "agt_abc",
-    projectId: "prj_xyz",
+    organizationId: "org_xyz",
     name: "My Key",
-    keyPrefix: "agt_live_abc123defgh",
-    environment: "live" as const,
+    keyPrefix: "agt_abc123defghijklm",
     lastUsedAt: null,
     revokedAt: null,
     createdAt: now,
@@ -261,11 +258,11 @@ describe("serializeApiKey", () => {
   });
 
   it("redacts the key as keyPrefix + '...'", () => {
-    expect(serializeApiKey(row).key).toBe("agt_live_abc123defgh...");
+    expect(serializeApiKey(row).key).toBe("agt_abc123defghijklm...");
   });
 
-  it("has snake_case project_id", () => {
-    expect(serializeApiKey(row).project_id).toBe("prj_xyz");
+  it("has snake_case organization_id", () => {
+    expect(serializeApiKey(row).organization_id).toBe("org_xyz");
   });
 
   it("converts timestamps to unix (null for null)", () => {
@@ -273,10 +270,6 @@ describe("serializeApiKey", () => {
     expect(s.last_used_at).toBeNull();
     expect(s.revoked_at).toBeNull();
     expect(s.created_at).toBe(toUnix(now));
-  });
-
-  it("exposes environment field", () => {
-    expect(serializeApiKey(row).environment).toBe("live");
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { makeRequest, json, routeParams } from "../helpers/request";
-import { seedProject } from "../helpers/seed";
+import { seedOrganization } from "../helpers/seed";
 
 // Helpers to load the various webhook route handlers.
 const endpoints = () => import("@/app/api/webhooks/route");
@@ -11,7 +11,7 @@ const catchRoute = () => import("@/app/api/catch/[id]/route");
 interface Endpoint {
   id: string;
   object: string;
-  project_id: string | null;
+  organization_id: string | null;
   url: string;
   max_events: number;
   event_count?: number;
@@ -33,15 +33,15 @@ describe("POST /api/webhooks", () => {
   it("creates a public endpoint (no auth) with a catch url", async () => {
     const ep = await createEndpoint({ name: "Public hook" });
     expect(ep.object).toBe("webhook_endpoint");
-    expect(ep.project_id).toBeNull();
+    expect(ep.organization_id).toBeNull();
     expect(ep.url).toBe(`https://app.example.com/api/catch/${ep.id}`);
     expect(ep.max_events).toBe(100); // default when unset
   });
 
-  it("creates a project-owned endpoint when authenticated", async () => {
-    const { projectId, key } = await seedProject();
+  it("creates an organization-owned endpoint when authenticated", async () => {
+    const { organizationId, key } = await seedOrganization();
     const ep = await createEndpoint({ name: "Owned", max_events: 5 }, key);
-    expect(ep.project_id).toBe(projectId);
+    expect(ep.organization_id).toBe(organizationId);
     expect(ep.max_events).toBe(5);
   });
 
@@ -86,8 +86,8 @@ describe("POST /api/webhooks", () => {
 
 describe("GET /api/webhooks", () => {
   it("lists only the caller's endpoints", async () => {
-    const a = await seedProject();
-    const b = await seedProject();
+    const a = await seedOrganization();
+    const b = await seedOrganization();
     await createEndpoint({ name: "A1" }, a.key);
     await createEndpoint({ name: "A2" }, a.key);
     await createEndpoint({ name: "B1" }, b.key);
@@ -97,11 +97,11 @@ describe("GET /api/webhooks", () => {
     const body = await json<{ object: string; data: Endpoint[] }>(res);
     expect(body.object).toBe("list");
     expect(body.data).toHaveLength(2);
-    expect(body.data.every((e) => e.project_id === a.projectId)).toBe(true);
+    expect(body.data.every((e) => e.organization_id === a.organizationId)).toBe(true);
   });
 
   it("paginates with limit + after cursor", async () => {
-    const { key } = await seedProject();
+    const { key } = await seedOrganization();
     for (let i = 0; i < 3; i++) await createEndpoint({ name: `E${i}` }, key);
 
     const { GET } = await endpoints();
@@ -161,9 +161,9 @@ describe("/api/webhooks/[id]", () => {
     expect(body.error.type).toBe("not_found_error");
   });
 
-  it("forbids access to another project's endpoint (403)", async () => {
-    const owner = await seedProject();
-    const other = await seedProject();
+  it("forbids access to another organization's endpoint (403)", async () => {
+    const owner = await seedOrganization();
+    const other = await seedOrganization();
     const ep = await createEndpoint({ name: "Owned" }, owner.key);
 
     const { GET } = await endpointItem();
@@ -322,9 +322,9 @@ describe("/api/webhooks/[id]/events", () => {
     expect(after.data).toHaveLength(0);
   });
 
-  it("forbids listing another project's events (403)", async () => {
-    const owner = await seedProject();
-    const other = await seedProject();
+  it("forbids listing another organization's events (403)", async () => {
+    const owner = await seedOrganization();
+    const other = await seedOrganization();
     const ep = await createEndpoint({ name: "Owned" }, owner.key);
 
     const { GET } = await eventsRoute();

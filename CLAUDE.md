@@ -6,16 +6,18 @@ Open-source infrastructure for AI agents. REST + MCP first.
 
 ## Stack
 - Next.js 16 (App Router, TypeScript)
-- BetterAuth — user sessions
+- BetterAuth — user sessions + organizations (organization plugin)
 - Drizzle ORM + Neon Postgres
 - @modelcontextprotocol/sdk
 
 ## Auth model
 API key auth is **optional**. `resolveAuth(request)` in `src/lib/api/middleware.ts` returns `AuthContext | null`.
-- Authenticated (Bearer `agt_live_*`): resource is project-owned
+- Authenticated (Bearer `agt_live_*`): resource is organization-owned
 - Unauthenticated: resource is public (anyone with the ID can read/write)
 
-See `API_CONVENTIONS.md` for error envelope, pagination, and ownership rules.
+Humans and agents are both org **members** (agents are JIT-provisioned users), so a signed-in human sees every agent with access to their resources on `/dashboard`. Org helpers: `src/lib/orgs/`.
+
+See `docs/API_CONVENTIONS.md` for error envelope, pagination, and ownership rules.
 
 ## Key commands
 ```bash

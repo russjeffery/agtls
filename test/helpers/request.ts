@@ -9,7 +9,7 @@ export interface RequestInitLike {
   body?: unknown;
   /** Raw string body (takes precedence over `body`). */
   rawBody?: string;
-  /** Bearer token, e.g. an `agt_live_…` key. */
+  /** Bearer token, e.g. an `agt_…` key. */
   token?: string;
   /** Accept header. Pass "text/html,..." to exercise the HTML branch. */
   accept?: string;

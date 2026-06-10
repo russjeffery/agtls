@@ -3,7 +3,7 @@ import { setPublicKey } from "./jwks-key";
 import { _resetTrustListCache } from "@/lib/agent-auth/trusted-providers";
 
 // In-memory trusted provider used by the agent-verified (ID-JAG) tests. Mirrors
-// scripts/agent-auth-smoke.ts, but wires the keypair into the mocked JWKS
+// test/scripts/agent-auth-smoke.ts, but wires the keypair into the mocked JWKS
 // module and the trust list env so the full service/route path runs offline.
 
 export const TEST_ISS = "https://provider.example.com";

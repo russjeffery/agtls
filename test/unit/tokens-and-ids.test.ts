@@ -116,7 +116,8 @@ describe("hashesEqual", () => {
 
 describe("newId – prefixes", () => {
   const cases: Array<[Parameters<typeof newId>[0], string]> = [
-    ["project", "prj_"],
+    ["organization", "org_"],
+    ["member", "mem_"],
     ["apiKey", "agt_"],
     ["task", "tsk_"],
     ["subtask", "sub_"],
@@ -141,24 +142,16 @@ describe("newId – prefixes", () => {
 });
 
 describe("newApiKey", () => {
-  it("live key has prefix agt_live_", () => {
-    expect(newApiKey("live")).toMatch(/^agt_live_/);
+  it("has prefix agt_", () => {
+    expect(newApiKey()).toMatch(/^agt_/);
   });
 
-  it("test key has prefix agt_test_", () => {
-    expect(newApiKey("test")).toMatch(/^agt_test_/);
-  });
-
-  it("live key is agt_live_ (9 chars) + 24 nanoid chars = 33 total", () => {
-    expect(newApiKey("live").length).toBe("agt_live_".length + 24);
-  });
-
-  it("test key is agt_test_ (9 chars) + 24 nanoid chars = 33 total", () => {
-    expect(newApiKey("test").length).toBe("agt_test_".length + 24);
+  it("is agt_ (4 chars) + 24 nanoid chars = 28 total", () => {
+    expect(newApiKey().length).toBe("agt_".length + 24);
   });
 
   it("produces unique values", () => {
-    const keys = new Set(Array.from({ length: 20 }, () => newApiKey("live")));
+    const keys = new Set(Array.from({ length: 20 }, () => newApiKey()));
     expect(keys.size).toBe(20);
   });
 });

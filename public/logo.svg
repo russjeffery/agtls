@@ -1,0 +1,41 @@
+<svg width="240" height="48" viewBox="0 0 240 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent Tools">
+  <style>
+    .cursor {
+      animation: blink 1.2s infinite steps(2);
+    }
+    .brand-mark {
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    svg:hover .brand-mark {
+      transform: scale(1.05);
+    }
+    svg:hover .anim-path {
+      stroke: #f4f6f5;
+    }
+    svg:hover .t {
+      stroke: #5fd089;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  </style>
+
+  <!-- Icon / Monogram (Sharp Brutalist AT) -->
+  <g class="brand-mark" transform-origin="24 24">
+    <!-- Outer 'A' Frame - Razor-sharp Miter Joint -->
+    <path class="anim-path" d="M 13 36 L 24 12 L 35 36" stroke="#5fd089" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
+
+    <!-- 'T' Nestled Under - Square Terminals -->
+    <path class="t" d="M 18 24 L 30 24" stroke="#fff" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
+    <path class="t" d="M 24 24 L 24 36" stroke="#fff" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
+
+    <!-- Sharp Terminal Cursor Block (Replaced Circle) -->
+    <!-- <rect class="cursor" x="22" y="16.5" width="4" height="4" fill="#f4f6f5" /> -->
+  </g>
+
+  <!-- Typography using Spline Sans Mono -->
+  <text x="58" y="30" font-family="'Spline Sans Mono', 'Fira Code', monospace" font-size="20" font-weight="700" letter-spacing="-0.8" fill="#f4f6f5">
+    agent<tspan fill="#5fd089">tools</tspan>
+  </text>
+</svg>

@@ -37,10 +37,14 @@ const TABLES = [
   "agent_registration",
   "webhook_event",
   "webhook_endpoint",
+  "scheduled_message",
+  "memory",
   "subtask",
   "task",
   "api_key",
-  "project",
+  "invitation",
+  "member",
+  "organization",
   '"user"',
 ];
 

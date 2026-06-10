@@ -31,6 +31,8 @@ export const session = pgTable("session", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  // Required by the BetterAuth organization plugin.
+  activeOrganizationId: text("active_organization_id"),
 });
 
 export const account = pgTable("account", {
@@ -60,35 +62,62 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at"),
 });
 
-// ─── Projects & API Keys ──────────────────────────────────────────────────────
+// ─── Organizations & API Keys ─────────────────────────────────────────────────
+//
+// Managed by the BetterAuth organization plugin. An organization is the
+// ownership scope for resources and API keys; humans and agents are both
+// `member` rows (agents are JIT-provisioned users), which is what lets a
+// signed-in human see every agent with access to the same resources.
+// Field shapes follow the plugin's expectations: `metadata` is a JSON string
+// (not jsonb), `invitation.expiresAt` is NOT NULL, and the invitation table
+// must exist even though we add agent members programmatically.
 
-export const project = pgTable("project", {
-  id: text("id").primaryKey(), // nanoid, prefix: prj_
+export const organization = pgTable("organization", {
+  id: text("id").primaryKey(), // nanoid, prefix: org_
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  metadata: text("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const member = pgTable("member", {
+  id: text("id").primaryKey(), // nanoid, prefix: mem_
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
+  role: text("role").notNull().default("member"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const apiKeyEnvironment = pgEnum("api_key_environment", [
-  "live",
-  "test",
-]);
+export const invitation = pgTable("invitation", {
+  id: text("id").primaryKey(), // nanoid, prefix: inv_
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organization.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role"),
+  status: text("status").notNull().default("pending"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  inviterId: text("inviter_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+});
 
 export const apiKey = pgTable("api_key", {
   id: text("id").primaryKey(), // nanoid
-  projectId: text("project_id")
+  organizationId: text("organization_id")
     .notNull()
-    .references(() => project.id, { onDelete: "cascade" }),
+    .references(() => organization.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  // First 20 chars shown in UI, e.g. "agt_live_abc123defgh"
+  // First 20 chars shown in UI, e.g. "agt_abc123defghijklmn"
   keyPrefix: text("key_prefix").notNull(),
   // SHA-256 of the full key — never stored in plaintext after creation
   keyHash: text("key_hash").notNull().unique(),
-  environment: apiKeyEnvironment("environment").notNull().default("live"),
   // Credentials issued from the agent-auth flow carry an explicit scope set
   // and (for access_token credentials) an expiry. Legacy keys leave both null,
   // which resolveAuth treats as "never expires / full access".
@@ -131,7 +160,7 @@ export const agentRegistration = pgTable("agent_registration", {
     .notNull(),
   // The principal that owns issued credentials. Created lazily for
   // email-verification (no principal until the claim completes).
-  projectId: text("project_id").references(() => project.id, {
+  organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
   userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
@@ -185,11 +214,15 @@ export const agentAuditEvent = pgTable("agent_audit_event", {
 export const task = pgTable("task", {
   id: text("id").primaryKey(), // nanoid, prefix: tsk_
   // null = public / anonymous resource
-  projectId: text("project_id").references(() => project.id, {
+  organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
   name: text("name").notNull(),
   description: text("description"),
+  // SHA-256 of the claim token issued on public creation; lets a later
+  // authenticated caller take ownership via POST /api/claim/{id}. Cleared
+  // once claimed. Null for resources created with auth.
+  claimTokenHash: text("claim_token_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -211,7 +244,7 @@ export const subtaskPriority = pgEnum("subtask_priority", [
 export const subtask = pgTable("subtask", {
   id: text("id").primaryKey(), // nanoid, prefix: sub_
   // null = public / anonymous resource
-  projectId: text("project_id").references(() => project.id, {
+  organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
   taskId: text("task_id").references(() => task.id, {
@@ -225,6 +258,8 @@ export const subtask = pgTable("subtask", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   dueAt: timestamp("due_at"),
   completedAt: timestamp("completed_at"),
+  // See task.claimTokenHash.
+  claimTokenHash: text("claim_token_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -234,13 +269,15 @@ export const subtask = pgTable("subtask", {
 export const webhookEndpoint = pgTable("webhook_endpoint", {
   id: text("id").primaryKey(), // nanoid, prefix: whe_
   // null = public / anonymous resource
-  projectId: text("project_id").references(() => project.id, {
+  organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
   name: text("name").notNull(),
   description: text("description"),
   // Maximum number of events to retain (null = unlimited for authenticated)
   maxEvents: integer("max_events").default(100),
+  // See task.claimTokenHash.
+  claimTokenHash: text("claim_token_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -251,7 +288,7 @@ export const webhookEvent = pgTable("webhook_event", {
     .notNull()
     .references(() => webhookEndpoint.id, { onDelete: "cascade" }),
   // Denormalized for fast queries without join
-  projectId: text("project_id").references(() => project.id, {
+  organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
   method: text("method").notNull(),
@@ -263,4 +300,71 @@ export const webhookEvent = pgTable("webhook_event", {
   sourceIp: text("source_ip"),
   sizeBytes: integer("size_bytes"),
   receivedAt: timestamp("received_at").notNull().defaultNow(),
+});
+
+// ─── Agent Memory ─────────────────────────────────────────────────────────────
+//
+// A simple store for an agent to persist a file of content (a memory). Today the
+// only accepted format is markdown; `format` exists so other formats (plain text,
+// JSON, …) can be added later without reshaping the resource.
+
+export const memoryFormat = pgEnum("memory_format", ["markdown"]);
+
+export const memory = pgTable("memory", {
+  id: text("id").primaryKey(), // nanoid, prefix: memo_
+  // null = public / anonymous resource
+  organizationId: text("organization_id").references(() => organization.id, {
+    onDelete: "cascade",
+  }),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  format: memoryFormat("format").notNull().default("markdown"),
+  // See task.claimTokenHash.
+  claimTokenHash: text("claim_token_hash"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ─── Scheduled Messages ───────────────────────────────────────────────────────
+//
+// A message scheduled to fire at a later time to trigger an agent — a cron-style
+// delayed dispatch. Today the only channel is `http` (send an HTTP request to a
+// URL at `scheduledAt`); `channel` exists so other channels (email, SMS, …) can
+// be added later. Delivery is performed by dispatchDueMessages() (see
+// src/lib/messages/dispatch.ts), driven by POST /api/messages/dispatch.
+
+export const messageChannel = pgEnum("message_channel", ["http"]);
+
+export const messageStatus = pgEnum("message_status", [
+  "scheduled", // waiting for its scheduled time
+  "delivering", // claimed by a dispatcher, in flight (guards against double-send)
+  "delivered", // sent and accepted by the target (2xx)
+  "failed", // sent but the target errored, or the request threw
+  "canceled", // canceled before it fired
+]);
+
+export const scheduledMessage = pgTable("scheduled_message", {
+  id: text("id").primaryKey(), // nanoid, prefix: msg_
+  // null = public / anonymous resource
+  organizationId: text("organization_id").references(() => organization.id, {
+    onDelete: "cascade",
+  }),
+  channel: messageChannel("channel").notNull().default("http"),
+  // HTTP delivery target.
+  url: text("url").notNull(),
+  method: text("method").notNull().default("POST"),
+  headers: jsonb("headers").$type<Record<string, string>>(),
+  body: text("body"),
+  // When the message should fire.
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  status: messageStatus("status").notNull().default("scheduled"),
+  attempts: integer("attempts").notNull().default(0),
+  // Outcome of the most recent delivery attempt.
+  responseStatus: integer("response_status"),
+  lastError: text("last_error"),
+  deliveredAt: timestamp("delivered_at"),
+  // See task.claimTokenHash.
+  claimTokenHash: text("claim_token_hash"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

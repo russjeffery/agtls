@@ -4,7 +4,7 @@ import { toUnix } from "./response";
 
 export function serializeTask(row: {
   id: string;
-  projectId: string | null;
+  organizationId: string | null;
   name: string;
   description: string | null;
   createdAt: Date;
@@ -13,7 +13,7 @@ export function serializeTask(row: {
   return {
     id: row.id,
     object: "task" as const,
-    project_id: row.projectId,
+    organization_id: row.organizationId,
     name: row.name,
     description: row.description,
     created_at: toUnix(row.createdAt),
@@ -23,7 +23,7 @@ export function serializeTask(row: {
 
 export function serializeSubtask(row: {
   id: string;
-  projectId: string | null;
+  organizationId: string | null;
   taskId: string | null;
   title: string;
   description: string | null;
@@ -39,7 +39,7 @@ export function serializeSubtask(row: {
   return {
     id: row.id,
     object: "subtask" as const,
-    project_id: row.projectId,
+    organization_id: row.organizationId,
     task_id: row.taskId,
     title: row.title,
     description: row.description,
@@ -57,7 +57,7 @@ export function serializeSubtask(row: {
 export function serializeWebhookEndpoint(
   row: {
     id: string;
-    projectId: string | null;
+    organizationId: string | null;
     name: string;
     description: string | null;
     maxEvents: number | null;
@@ -70,7 +70,7 @@ export function serializeWebhookEndpoint(
   return {
     id: row.id,
     object: "webhook_endpoint" as const,
-    project_id: row.projectId,
+    organization_id: row.organizationId,
     name: row.name,
     description: row.description,
     url: `${appUrl}/api/catch/${row.id}`,
@@ -84,7 +84,7 @@ export function serializeWebhookEndpoint(
 export function serializeWebhookEvent(row: {
   id: string;
   endpointId: string;
-  projectId: string | null;
+  organizationId: string | null;
   method: string;
   path: string;
   headers: Record<string, string>;
@@ -99,7 +99,7 @@ export function serializeWebhookEvent(row: {
     id: row.id,
     object: "webhook_event" as const,
     endpoint_id: row.endpointId,
-    project_id: row.projectId,
+    organization_id: row.organizationId,
     method: row.method,
     path: row.path,
     headers: row.headers,
@@ -112,30 +112,87 @@ export function serializeWebhookEvent(row: {
   };
 }
 
-export function serializeProject(row: {
+export function serializeMemory(row: {
   id: string;
-  userId: string;
+  organizationId: string | null;
   name: string;
-  slug: string;
+  content: string;
+  format: "markdown";
   createdAt: Date;
   updatedAt: Date;
 }) {
   return {
     id: row.id,
-    object: "project" as const,
+    object: "memory" as const,
+    organization_id: row.organizationId,
     name: row.name,
-    slug: row.slug,
+    content: row.content,
+    format: row.format,
     created_at: toUnix(row.createdAt),
     updated_at: toUnix(row.updatedAt),
   };
 }
 
+export function serializeScheduledMessage(row: {
+  id: string;
+  organizationId: string | null;
+  channel: "http";
+  url: string;
+  method: string;
+  headers: Record<string, string> | null;
+  body: string | null;
+  scheduledAt: Date;
+  status: "scheduled" | "delivering" | "delivered" | "failed" | "canceled";
+  attempts: number;
+  responseStatus: number | null;
+  lastError: string | null;
+  deliveredAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: row.id,
+    object: "scheduled_message" as const,
+    organization_id: row.organizationId,
+    channel: row.channel,
+    url: row.url,
+    method: row.method,
+    headers: row.headers ?? {},
+    body: row.body,
+    scheduled_at: toUnix(row.scheduledAt),
+    status: row.status,
+    attempts: row.attempts,
+    response_status: row.responseStatus,
+    last_error: row.lastError,
+    delivered_at: toUnix(row.deliveredAt),
+    created_at: toUnix(row.createdAt),
+    updated_at: toUnix(row.updatedAt),
+  };
+}
+
+export function serializeOrganization(row: {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    object: "organization" as const,
+    name: row.name,
+    slug: row.slug,
+    created_at: toUnix(row.createdAt),
+  };
+}
+
 export function serializeApiKey(row: {
   id: string;
-  projectId: string;
+  organizationId: string;
   name: string;
   keyPrefix: string;
-  environment: "live" | "test";
+  scopes?: string[] | null;
+  expiresAt?: Date | null;
+  createdByAgent?: boolean;
   lastUsedAt: Date | null;
   revokedAt: Date | null;
   createdAt: Date;
@@ -143,11 +200,13 @@ export function serializeApiKey(row: {
   return {
     id: row.id,
     object: "api_key" as const,
-    project_id: row.projectId,
+    organization_id: row.organizationId,
     name: row.name,
     // Show prefix + redacted suffix so users can identify the key
     key: `${row.keyPrefix}...`,
-    environment: row.environment,
+    scopes: row.scopes ?? null,
+    expires_at: toUnix(row.expiresAt ?? null),
+    created_by_agent: row.createdByAgent ?? false,
     last_used_at: toUnix(row.lastUsedAt),
     revoked_at: toUnix(row.revokedAt),
     created_at: toUnix(row.createdAt),

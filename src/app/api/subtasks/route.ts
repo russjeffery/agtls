@@ -1,31 +1,26 @@
 import { NextRequest } from "next/server";
-import { eq, and, isNull, desc, lt } from "drizzle-orm";
-import { z } from "zod";
+import { eq, and, inArray, desc, lt, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { subtask, task } from "@/lib/db/schema";
-import { resolveAuth } from "@/lib/api/middleware";
+import {
+  resolveViewer,
+  viewerCanAccess,
+  viewerOrganizationIds,
+  viewerUser,
+} from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
 import { created, errorResponse, listResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeSubtask } from "@/lib/api/serialize";
+import { mintResourceClaimToken } from "@/lib/api/claim";
 import { wantsHtml } from "@/lib/api/accepts";
 import { htmlResponse } from "@/lib/api/html";
-
-const createSchema = z.object({
-  title: z.string().min(1).max(500),
-  description: z.string().optional().nullable(),
-  task_id: z.string().optional().nullable(),
-  status: z.enum(["todo", "in_progress", "done", "cancelled"]).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  assignee: z.string().optional().nullable(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  due_at: z.number().int().optional().nullable(),
-});
+import { subtaskCreateSchema as createSchema } from "@/lib/api/schemas";
 
 export async function GET(request: NextRequest) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
@@ -52,13 +47,16 @@ export async function GET(request: NextRequest) {
   const assigneeFilter = searchParams.get("assignee");
   const taskIdFilter = searchParams.get("task_id");
 
-  // Ownership filter
-  const ownerCondition = auth
-    ? eq(subtask.projectId, auth.projectId)
-    : isNull(subtask.projectId);
+  // Lists are scoped to the caller's organizations. Anonymous callers (scope
+  // null) get an empty list — public subtasks stay reachable by ID but are
+  // never enumerable.
+  const scope = viewerOrganizationIds(viewer);
 
   // Build conditions array
-  const conditions = [ownerCondition];
+  const conditions: SQL[] = [];
+  if (scope !== null && scope.length > 0) {
+    conditions.push(inArray(subtask.organizationId, scope));
+  }
 
   if (statusFilter) {
     const valid = ["todo", "in_progress", "done", "cancelled"];
@@ -105,28 +103,46 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const rows = await db
-    .select()
-    .from(subtask)
-    .where(and(...conditions))
-    .orderBy(desc(subtask.createdAt))
-    .limit(limit + 1);
+  const rows =
+    scope !== null && scope.length > 0
+      ? await db
+          .select()
+          .from(subtask)
+          .where(and(...conditions))
+          .orderBy(desc(subtask.createdAt))
+          .limit(limit + 1)
+      : [];
 
   const hasMore = rows.length > limit;
   const data = rows.slice(0, limit).map(serializeSubtask);
   const nextCursor = hasMore ? data[data.length - 1].id : null;
 
   if (wantsHtml(request)) {
+    const signedOut = scope === null;
     return htmlResponse(
       {
         title: "Subtasks",
         breadcrumb: [
-          { label: "API", href: "/" },
+          { label: "API", href: "/api" },
           { label: "subtasks", href: "/api/subtasks" },
         ],
         description:
           "All subtasks. Filter by task_id, status, priority, or assignee.",
-        list: {
+        user: viewerUser(viewer),
+        notice: signedOut
+          ? {
+              title: "Sign in to see your subtasks",
+              message:
+                "Subtasks are scoped to your account. Sign in to list the subtasks in your organizations — or pass an API key when calling this endpoint.",
+              actions: [
+                { label: "Sign in", href: "/sign-in", primary: true },
+                { label: "Create an account", href: "/sign-up" },
+              ],
+            }
+          : undefined,
+        list: signedOut
+          ? undefined
+          : {
           items: data as Record<string, unknown>[],
           columns: [
             { key: "id", label: "ID", mono: true },
@@ -179,15 +195,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  let auth;
+  let viewer;
   try {
-    auth = await resolveAuth(request);
+    viewer = await resolveViewer(request);
   } catch (e: unknown) {
     return errorResponse(
       errors.unauthorized(e instanceof Error ? e.message : undefined),
       401
     );
   }
+  const auth = viewer.auth;
 
   let body;
   try {
@@ -198,6 +215,7 @@ export async function POST(request: NextRequest) {
   }
 
   // If task_id provided, validate it exists and caller can write to it
+  let parentOrgId: string | null = null;
   if (body.task_id) {
     const [taskRow] = await db
       .select()
@@ -209,21 +227,30 @@ export async function POST(request: NextRequest) {
       return errorResponse(errors.notFound("task", body.task_id), 404);
     }
 
-    if (taskRow.projectId !== null) {
-      if (!auth || auth.projectId !== taskRow.projectId) {
-        return errorResponse(errors.forbidden(), 403);
-      }
+    if (!viewerCanAccess(taskRow.organizationId, viewer)) {
+      return errorResponse(errors.forbidden(), 403);
     }
+    parentOrgId = taskRow.organizationId;
   }
+
+  // Ownership of the new row: an API key pins it to that org; a session user
+  // creating under an owned parent task inherits the parent's org; otherwise
+  // the subtask is public.
+  const organizationId =
+    auth?.organizationId ?? (viewer.session ? parentOrgId : null);
 
   const id = newId("subtask");
   const now = new Date();
+
+  // Public creation gets a claim token so the resource can later be attached
+  // to an organization via POST /api/claim/{id}. Returned in plaintext exactly once.
+  const claim = organizationId ? null : mintResourceClaimToken();
 
   const [row] = await db
     .insert(subtask)
     .values({
       id,
-      projectId: auth ? auth.projectId : null,
+      organizationId,
       taskId: body.task_id ?? null,
       title: body.title,
       description: body.description ?? null,
@@ -233,6 +260,7 @@ export async function POST(request: NextRequest) {
       metadata: body.metadata ?? {},
       dueAt: body.due_at != null ? new Date(body.due_at * 1000) : null,
       completedAt: null,
+      claimTokenHash: claim?.hash ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -245,5 +273,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return created(serializeSubtask(row));
+  return created(
+    claim
+      ? {
+          ...serializeSubtask(row),
+          claim_token: claim.token,
+          claim_url: `/api/claim/${row.id}`,
+        }
+      : serializeSubtask(row)
+  );
 }
