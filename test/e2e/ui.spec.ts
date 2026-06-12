@@ -11,7 +11,7 @@ test.describe("landing page", () => {
       page.getByRole("link", { name: "Agent Tools" }).first()
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /Infrastructure your agent/ })
+      page.getByRole("heading", { name: /Tools your agent/ })
     ).toBeVisible();
     await expect(page.getByText("Tasks", { exact: true })).toBeVisible();
     await expect(

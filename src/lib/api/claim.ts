@@ -19,8 +19,8 @@ import {
 // same `clm_` token format, and only the SHA-256 hash is ever persisted. A
 // token is minted when a resource is created without auth (public) and is the
 // one-time proof that lets a later authenticated caller — whether their key
-// came from an anonymous or identity_assertion agent-auth registration, or a
-// dashboard-issued key — take ownership of the resource.
+// came from an anonymous, service_auth, or identity_assertion agent-auth
+// registration, or a dashboard-issued key — take ownership of the resource.
 
 /** Mint a claim token for a publicly-created resource. Plaintext is returned
  *  to the creator exactly once; only the hash is stored. */

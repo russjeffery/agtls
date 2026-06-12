@@ -39,6 +39,16 @@ export default async function ClaimPage({ params }: PageProps) {
     margin: "0 0 28px",
   };
 
+  const advisoryStyle: React.CSSProperties = {
+    fontSize: 14,
+    color: "var(--text-muted)",
+    background: "var(--surface-muted, rgba(0,0,0,0.04))",
+    border: "1px solid var(--border, rgba(0,0,0,0.1))",
+    borderRadius: 8,
+    padding: "12px 14px",
+    margin: "0 0 20px",
+  };
+
   if (!view) {
     return (
       <main style={wrapStyle}>
@@ -62,6 +72,13 @@ export default async function ClaimPage({ params }: PageProps) {
         {view.email ? ` (${view.email})` : ""}. If you recognize this request,
         confirm below to reveal a one-time code and read it back to the agent.
       </p>
+      {view.firstTimeAccount && (
+        <p style={advisoryStyle}>
+          This is the first agent to be linked to this email at{" "}
+          {view.serviceName}. Authorizing will create a new account. Only
+          continue if you started this request.
+        </p>
+      )}
       <RevealCode token={token} />
     </main>
   );

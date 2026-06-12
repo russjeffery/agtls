@@ -1,10 +1,18 @@
-import { nanoid } from "nanoid";
+import { customAlphabet } from "nanoid";
+
+// Base62 — no underscores or dashes, safe to double-click-select and URL-embed.
+const ALPHABET =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+const randomId = customAlphabet(ALPHABET, 16); // ~95 bits
+const randomSecret = customAlphabet(ALPHABET, 24); // ~143 bits
+const randomSlug = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
 
 const prefixes = {
   organization: "org",
   member: "mem",
   invitation: "inv",
-  apiKey: "agt",
+  apiKey: "key",
   task: "tsk",
   webhookEndpoint: "wh",
   webhookEvent: "whe",
@@ -18,16 +26,22 @@ const prefixes = {
 type Prefix = keyof typeof prefixes;
 
 export function newId(type: Prefix): string {
-  return `${prefixes[type]}_${nanoid(24)}`;
+  return `${prefixes[type]}_${randomId()}`;
 }
 
 export function newApiKey(): string {
-  // agt_<24 chars> — shown once, then hashed
-  return `agt_${nanoid(24)}`;
+  // agt_<24 chars> — shown once, then hashed. The underscore prefix stays:
+  // resolveAuth and secret scanners key off `agt_`.
+  return `agt_${randomSecret()}`;
 }
 
 // BetterAuth-style opaque user id for JIT-provisioned agent users. We insert
 // these directly (bypassing BetterAuth's sign-up), so any unique string works.
 export function newUserId(): string {
-  return nanoid(32);
+  return `usr_${randomId()}`;
+}
+
+// Lowercase suffix for human-readable slugs, e.g. "acme-x3k9f2qa".
+export function newSlugSuffix(): string {
+  return randomSlug();
 }

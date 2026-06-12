@@ -106,9 +106,8 @@ describe("harness: email capture", () => {
     await POST(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "person@example.com",
+          type: "service_auth",
+          login_hint: "person@example.com",
         },
         headers: { "x-forwarded-for": "203.0.113.8" },
       })

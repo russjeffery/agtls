@@ -31,7 +31,18 @@ export default async function ArtifactDetailPage({ params }: Params) {
 
   const editFields: FormField[] = [
     { name: "name", label: "Name", required: true, defaultValue: a.name },
-    { name: "content", label: "Content (markdown)", type: "textarea", required: true, defaultValue: a.content },
+    {
+      name: "format",
+      label: "Format",
+      type: "select",
+      required: true,
+      defaultValue: a.format,
+      options: [
+        { value: "markdown", label: "Markdown" },
+        { value: "html", label: "HTML" },
+      ],
+    },
+    { name: "content", label: "Content", type: "textarea", required: true, defaultValue: a.content },
   ];
 
   return (
@@ -46,6 +57,20 @@ export default async function ArtifactDetailPage({ params }: Params) {
           fields={[
             { label: "ID", value: a.id, mono: true },
             { label: "Format", value: a.format, mono: true },
+            {
+              label: "Raw URL",
+              value: (
+                <a
+                  href={a.raw_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--text-strong)", textDecoration: "underline" }}
+                >
+                  {a.raw_url}
+                </a>
+              ),
+              mono: true,
+            },
             { label: "Created", value: fmtDateTime(a.created_at), mono: true },
             { label: "Updated", value: fmtDateTime(a.updated_at), mono: true },
           ]}

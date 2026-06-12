@@ -70,9 +70,8 @@ test("the reveal page does not mint an OTP on GET (scanner-safe)", async ({
   const email = `scan-${Date.now()}@example.com`;
   await request.post("/api/agent/auth", {
     data: {
-      type: "identity_assertion",
-      assertion_type: "verified_email",
-      assertion: email,
+      type: "service_auth",
+      login_hint: email,
     },
   });
   const claimPath = await waitForClaimPath(email);

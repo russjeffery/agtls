@@ -13,7 +13,18 @@ export const metadata: Metadata = { title: "Artifacts — agtls" };
 
 const createFields: FormField[] = [
   { name: "name", label: "Name", placeholder: "Project context", required: true },
-  { name: "content", label: "Content (markdown)", type: "textarea", placeholder: "# Notes\n…", required: true },
+  {
+    name: "format",
+    label: "Format",
+    type: "select",
+    required: true,
+    defaultValue: "markdown",
+    options: [
+      { value: "markdown", label: "Markdown" },
+      { value: "html", label: "HTML" },
+    ],
+  },
+  { name: "content", label: "Content", type: "textarea", placeholder: "# Notes\n…", required: true },
 ];
 
 export default async function ArtifactsPage() {
@@ -35,7 +46,7 @@ export default async function ArtifactsPage() {
       user={{ name: viewer.user.name, email: viewer.user.email }}
       breadcrumb={[{ label: "Artifacts", href: "/artifacts" }]}
       title="Artifacts"
-      description="Markdown files an agent can store and recall. Each artifact is a single file of content."
+      description="Markdown or HTML files an agent can store and recall. Each artifact is a single file of content, served raw at its raw_url."
     >
       <div className="mb-6">
         <ResourceForm

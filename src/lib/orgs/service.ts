@@ -1,8 +1,7 @@
 import { eq, and, asc } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import { organization, member } from "@/lib/db/schema";
-import { newId } from "@/lib/api/ids";
+import { newId, newSlugSuffix } from "@/lib/api/ids";
 
 // Organization membership helpers shared by BetterAuth hooks, agent-auth, and
 // the dashboard routes. These write the org-plugin tables directly with
@@ -19,7 +18,7 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 30);
-  return `${base || "org"}-${nanoid(8).toLowerCase()}`;
+  return `${base || "org"}-${newSlugSuffix()}`;
 }
 
 /** Create an organization with `userId` as its owner member. */

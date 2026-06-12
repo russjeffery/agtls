@@ -16,7 +16,7 @@ test("resource API serves JSON to browsers", async ({ page }) => {
   expect(res?.headers()["content-type"]).toContain("application/json");
 });
 
-test("email-verification claim ceremony works through the browser", async ({
+test("service_auth claim ceremony works through the browser", async ({
   page,
   request,
 }) => {
@@ -25,9 +25,8 @@ test("email-verification claim ceremony works through the browser", async ({
   // 1. Agent registers, asking the user to verify by email.
   const reg = await request.post("/api/agent/auth", {
     data: {
-      type: "identity_assertion",
-      assertion_type: "verified_email",
-      assertion: email,
+      type: "service_auth",
+      login_hint: email,
     },
   });
   expect(reg.status()).toBe(201);

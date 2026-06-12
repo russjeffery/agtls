@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ArrowRight, BookOpen, KeyRound, Plug, Braces, Users, ListChecks, Webhook, Radio, FileText, Clock, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { headers } from "next/headers";
@@ -104,7 +105,7 @@ function Hero() {
             color: "var(--text-strong)",
           }}
         >
-          Tools your agent<br />
+          Free tools your agent<br />
           can use <em style={{ color: "var(--ds-accent)", fontStyle: "italic" }}>right now</em>.
         </h1>
         <p
@@ -198,13 +199,13 @@ function Hero() {
             <span style={{ color: "var(--amber-400)" }}>{'{"name": "Review PR #142", "priority": "high"}'}</span>
             {"'\n\n{\n  "}
             <span style={{ color: "var(--amber-400)" }}>&quot;id&quot;</span>
-            {': "tsk_8f2k1x",\n  '}
+            {': "tsk_8f2k1xQz",\n  '}
             <span style={{ color: "var(--amber-400)" }}>&quot;object&quot;</span>
             {': "task",\n  '}
             <span style={{ color: "var(--amber-400)" }}>&quot;status&quot;</span>
             {': "pending",\n  '}
             <span style={{ color: "var(--amber-400)" }}>&quot;claim_url&quot;</span>
-            {': "/api/claim/tsk_8f2k1x"\n}\n\n'}
+            {': "/api/claim/tsk_8f2k1xQz"\n}\n\n'}
             <span style={{ color: "var(--text-faint)" }}># No key. No signup. Claim it into your org later.</span>
           </pre>
         </div>
@@ -213,7 +214,7 @@ function Hero() {
   );
 }
 
-const FEATURES = [
+const FEATURES: { icon: ReactNode; title: string; body: ReactNode }[] = [
   {
     icon: <KeyRound size={20} />,
     title: "No key required",
@@ -222,7 +223,18 @@ const FEATURES = [
   {
     icon: <Plug size={20} />,
     title: "REST and MCP",
-    body: "Every tool is a typed JSON API and an MCP tool from one endpoint. OpenAPI 3.1 spec at /api/openapi.json.",
+    body: (
+      <>
+        Every tool is a typed JSON API and an MCP tool from one endpoint. OpenAPI 3.1 spec at{" "}
+        <a
+          href="/api/openapi.json"
+          style={{ color: "var(--ds-accent)", textDecoration: "underline" }}
+        >
+          /api/openapi.json
+        </a>
+        .
+      </>
+    ),
   },
   {
     icon: <Braces size={20} />,

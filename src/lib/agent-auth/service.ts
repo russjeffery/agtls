@@ -50,7 +50,6 @@ import { sendClaimEmail } from "@/lib/email";
 const SERVICE_NAME = "agtls";
 
 const ID_JAG_ASSERTION = "urn:ietf:params:oauth:token-type:id-jag";
-const VERIFIED_EMAIL_ASSERTION = "verified_email";
 
 export interface RequestContext {
   ip?: string | null;
@@ -75,6 +74,14 @@ const registerSchema = z.discriminatedUnion("type", [
     type: z.literal("identity_assertion"),
     assertion_type: z.string(),
     assertion: z.string().min(1),
+    requested_credential_type: credentialTypeSchema.default("api_key"),
+  }),
+  z.object({
+    type: z.literal("service_auth"),
+    // CIBA-style hint at who the user is; the service authenticates them
+    // out-of-band. Untyped string so phone numbers etc. can follow later — the
+    // shape is sniffed in registerServiceAuth (today: email only).
+    login_hint: z.string().min(1),
     requested_credential_type: credentialTypeSchema.default("api_key"),
   }),
   z.object({
@@ -106,16 +113,18 @@ export async function handleRegister(
     return registerAnonymous(body.requested_credential_type, ctx);
   }
 
-  // type === "identity_assertion" — dispatch on assertion_type.
-  if (body.assertion_type === ID_JAG_ASSERTION) {
-    return registerAgentVerified(
-      body.assertion,
+  if (body.type === "service_auth") {
+    return registerServiceAuth(
+      body.login_hint,
       body.requested_credential_type,
       ctx
     );
   }
-  if (body.assertion_type === VERIFIED_EMAIL_ASSERTION) {
-    return registerEmailRequired(
+
+  // type === "identity_assertion" — dispatch on assertion_type. ID-JAG is the
+  // only assertion type now (the email path moved to service_auth above).
+  if (body.assertion_type === ID_JAG_ASSERTION) {
+    return registerAgentVerified(
       body.assertion,
       body.requested_credential_type,
       ctx
@@ -271,17 +280,21 @@ async function registerAnonymous(
   };
 }
 
-// User claimed · email required: email the OTP now, withhold credential.
-async function registerEmailRequired(
-  email: string,
+// User claimed · service auth: the agent hints at the user (today an email);
+// the service authenticates them out-of-band. Email the OTP now, withhold the
+// credential until the claim completes.
+async function registerServiceAuth(
+  loginHint: string,
   requestedCredentialType: CredentialType,
   ctx: RequestContext
 ): Promise<Record<string, unknown>> {
-  const trimmed = email.trim();
+  const trimmed = loginHint.trim();
+  // login_hint is an untyped string per CIBA — sniff the format. We only
+  // recognize email addresses today.
   if (!z.string().email().safeParse(trimmed).success) {
     throw new AgentAuthError(
-      "invalid_request",
-      "A valid user email is required for this registration."
+      "invalid_login_hint",
+      "login_hint must be a valid email address."
     );
   }
   enforceRateLimit("identity_assertion", { ip: ctx.ip });
@@ -297,7 +310,7 @@ async function registerEmailRequired(
 
   await db.insert(agentRegistration).values({
     id: regId,
-    type: "email-verification",
+    type: "service_auth",
     status: "unclaimed",
     requestedCredentialType,
     email: trimmed,
@@ -315,7 +328,7 @@ async function registerEmailRequired(
 
   await recordAuditEvent("registration.created", {
     registrationId: regId,
-    data: { registration_type: "email-verification" },
+    data: { registration_type: "service_auth" },
   });
   // Email is sent at registration for this entrypoint, so the claim is
   // implicitly requested now.
@@ -326,7 +339,7 @@ async function registerEmailRequired(
 
   return {
     registration_id: regId,
-    registration_type: "email-verification",
+    registration_type: "service_auth",
     claim_url: claimUri(),
     claim_token: claimToken,
     claim_token_expires: iso(claimTokenExpiresAt),
@@ -418,6 +431,12 @@ export interface ClaimViewInfo {
 export interface ClaimViewLookup {
   serviceName: string;
   email: string | null;
+  /**
+   * Page-level advisory: no prior claimed registration exists for this user, so
+   * authorizing here links an agent to a brand-new account. Surfaced above the
+   * code form so the user notices a first-time link before authorizing.
+   */
+  firstTimeAccount: boolean;
 }
 
 /**
@@ -431,6 +450,7 @@ export async function getClaimView(
 ): Promise<ClaimViewLookup | null> {
   const [reg] = await db
     .select({
+      id: agentRegistration.id,
       status: agentRegistration.status,
       email: agentRegistration.email,
       claimTokenExpiresAt: agentRegistration.claimTokenExpiresAt,
@@ -443,7 +463,25 @@ export async function getClaimView(
   if (reg.claimTokenExpiresAt && reg.claimTokenExpiresAt.getTime() <= Date.now()) {
     return null;
   }
-  return { serviceName: SERVICE_NAME, email: reg.email };
+
+  // first_time_account: has this email ever completed a claim before? If not,
+  // authorizing here links an agent to a fresh account.
+  let firstTimeAccount = true;
+  if (reg.email) {
+    const [prior] = await db
+      .select({ id: agentRegistration.id })
+      .from(agentRegistration)
+      .where(
+        and(
+          eq(agentRegistration.email, reg.email),
+          eq(agentRegistration.status, "claimed")
+        )
+      )
+      .limit(1);
+    firstTimeAccount = !prior;
+  }
+
+  return { serviceName: SERVICE_NAME, email: reg.email, firstTimeAccount };
 }
 
 /**
@@ -538,7 +576,7 @@ export async function handleClaimComplete(
   if (reg.type === "anonymous") {
     return completeAnonymous(reg);
   }
-  return completeEmailRequired(reg);
+  return completeServiceAuth(reg);
 }
 
 type Registration = typeof agentRegistration.$inferSelect;
@@ -588,8 +626,8 @@ async function completeAnonymous(
   return { registration_id: reg.id, status: "claimed" };
 }
 
-// Email required: provision the agent user now and issue a fresh credential.
-async function completeEmailRequired(
+// Service auth: provision the agent user now and issue a fresh credential.
+async function completeServiceAuth(
   reg: Registration
 ): Promise<Record<string, unknown>> {
   const email = reg.email!;

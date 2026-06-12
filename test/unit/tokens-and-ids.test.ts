@@ -118,7 +118,7 @@ describe("newId – prefixes", () => {
   const cases: Array<[Parameters<typeof newId>[0], string]> = [
     ["organization", "org_"],
     ["member", "mem_"],
-    ["apiKey", "agt_"],
+    ["apiKey", "key_"],
     ["task", "tsk_"],
     ["webhookEndpoint", "wh_"],
     ["webhookEvent", "whe_"],
@@ -129,15 +129,24 @@ describe("newId – prefixes", () => {
 
   for (const [type, prefix] of cases) {
     it(`${type} → starts with '${prefix}'`, () => {
-      expect(newId(type)).toMatch(new RegExp(`^${prefix.replace("_", "\\_")}`));
+      expect(newId(type).startsWith(prefix)).toBe(true);
     });
 
-    it(`${type} → prefix + underscore + 24 nanoid chars`, () => {
+    it(`${type} → prefix + 16 base62 chars, random part has no underscores or dashes`, () => {
       const id = newId(type);
-      // After the fixed prefix (e.g. "prj_"), the remaining 24 chars are nanoid
-      expect(id.length).toBe(prefix.length + 24);
+      expect(id.length).toBe(prefix.length + 16);
+      expect(id.slice(prefix.length)).toMatch(/^[0-9A-Za-z]+$/);
     });
   }
+
+  it("no prefix is a prefix of another (claim dispatch relies on this)", () => {
+    const prefixes = cases.map(([, p]) => p).concat(["inv_", "art_", "msg_"]);
+    for (const a of prefixes) {
+      for (const b of prefixes) {
+        if (a !== b) expect(b.startsWith(a)).toBe(false);
+      }
+    }
+  });
 });
 
 describe("newApiKey", () => {
@@ -145,8 +154,12 @@ describe("newApiKey", () => {
     expect(newApiKey()).toMatch(/^agt_/);
   });
 
-  it("is agt_ (4 chars) + 24 nanoid chars = 28 total", () => {
+  it("is agt_ (4 chars) + 24 base62 chars = 28 total", () => {
     expect(newApiKey().length).toBe("agt_".length + 24);
+  });
+
+  it("contains no underscores or dashes after the agt_ prefix", () => {
+    expect(newApiKey().slice(4)).toMatch(/^[0-9A-Za-z]+$/);
   });
 
   it("produces unique values", () => {
@@ -156,8 +169,10 @@ describe("newApiKey", () => {
 });
 
 describe("newUserId", () => {
-  it("has length 32", () => {
-    expect(newUserId().length).toBe(32);
+  it("is usr_ + 16 base62 chars", () => {
+    const id = newUserId();
+    expect(id.length).toBe("usr_".length + 16);
+    expect(id).toMatch(/^usr_[0-9A-Za-z]+$/);
   });
 
   it("produces unique values", () => {

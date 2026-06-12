@@ -34,10 +34,13 @@ the DB scoped to the user's organizations, and render with the design system
 with `fetch`. The pages require a session and redirect to `/sign-in` otherwise.
 
 ## Resource IDs
-Use `newId(type)` from `@/lib/api/ids`. Prefixes:
+Use `newId(type)` from `@/lib/api/ids`: a short prefix + `_` + 16 base62 chars
+(e.g. `tsk_4Hq9zKp2mXw7Rb3Y`). The random part never contains underscores or
+dashes. Rows created before June 2026 use a 24-char nanoid random part that may
+contain `-`/`_`; never validate ID shape, just look up by exact match. Prefixes:
 - `org_` — organization
 - `mem_` — organization member
-- `agt_` — API key (full key: `agt_live_*` or `agt_test_*`)
+- `key_` — API key row (the bearer secret itself is `agt_*`)
 - `tsk_` — task (unit of work; flat, grouped via labels)
 - `wh_`  — webhook endpoint
 - `whe_` — webhook event
@@ -51,7 +54,7 @@ All errors return JSON:
   "error": {
     "type": "invalid_request_error",
     "code": "resource_not_found",
-    "message": "No task with ID 'tsk_abc123' exists.",
+    "message": "No task with ID 'tsk_4Hq9zKp2mXw7Rb3Y' exists.",
     "param": null
   }
 }
@@ -69,9 +72,9 @@ HTTP status codes:
 All resources use **Unix seconds** (not ISO strings) for timestamps — use `toUnix()` from `@/lib/api/response`.
 ```json
 {
-  "id": "tsk_abc123",
+  "id": "tsk_4Hq9zKp2mXw7Rb3Y",
   "object": "task",
-  "organization_id": "org_xyz",
+  "organization_id": "org_2xK9mPq4Tt8Wd1Zs",
   "created_at": 1749340800,
   "updated_at": 1749340800
 }
@@ -85,7 +88,7 @@ Query params: `limit`, `after` (cursor = last item ID).
   "object": "list",
   "data": [...],
   "has_more": true,
-  "next_cursor": "tsk_abc123"
+  "next_cursor": "tsk_4Hq9zKp2mXw7Rb3Y"
 }
 ```
 Use `listResponse()` from `@/lib/api/response`.
@@ -118,7 +121,8 @@ the creation response. Only the SHA-256 of the token is stored
 (`claim_token_hash` column, helpers in `@/lib/api/claim`).
 
 Any authenticated caller — including credentials issued through the agent-auth
-`anonymous` or `identity_assertion` flows — can later take ownership:
+`anonymous`, `service_auth`, or `identity_assertion` flows — can later take
+ownership:
 
 ```
 POST /api/claim/{id}

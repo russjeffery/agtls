@@ -1,9 +1,9 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
-import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
+import { newId, newUserId } from "@/lib/api/ids";
 import { sendEmail } from "@/lib/email";
 import { createOrgWithOwner } from "@/lib/orgs/service";
 
@@ -42,15 +42,15 @@ export const auth = betterAuth({
   advanced: {
     database: {
       // Global across all models — prefix org-plugin rows like our own IDs,
-      // fall through to an opaque nanoid for user/session/etc.
+      // fall through to an opaque id for user/session/etc.
       generateId: ({ model }) =>
         model === "organization"
-          ? `org_${nanoid(24)}`
+          ? newId("organization")
           : model === "member"
-            ? `mem_${nanoid(24)}`
+            ? newId("member")
             : model === "invitation"
-              ? `inv_${nanoid(24)}`
-              : nanoid(32),
+              ? newId("invitation")
+              : newUserId(),
     },
   },
   plugins: [organization({ creatorRole: "owner" })],

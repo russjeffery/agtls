@@ -10,7 +10,13 @@ user. Both flows are supported.
 | ---------------------------------------- | ---------------------------- | ----------------- |
 | `identity_assertion` + `id-jag`          | Agent verified               | Issued synchronously after ID-JAG verification |
 | `anonymous`                              | User claimed · anonymous start | Issued up front (pre-claim scopes), upgraded in place on claim |
-| `identity_assertion` + `verified_email`  | User claimed · email required | Withheld until OTP claim completes |
+| `service_auth` (`login_hint`: email)     | User claimed · service auth  | Withheld until OTP claim completes |
+
+`service_auth` follows CIBA's `login_hint`: the agent hints at who the user is
+(today an email) and agtls authenticates the user out-of-band. Agents send
+`service_auth` and `anonymous` without consulting discovery — opt-out is
+signaled by a `*_not_enabled` error. `identity_assertion.assertion_types_supported`
+*is* worth cross-checking, since provider trust setup isn't trial-discoverable.
 
 ## Discovery
 
@@ -26,6 +32,8 @@ dot-prefixed segments like `.well-known`).
 ## Endpoints
 
 - `POST /api/agent/auth` — register; dispatches on `type` / `assertion_type`
+- MCP `agent_register` tool — same registration over MCP, so an agent can get a
+  credential without leaving the MCP session (see `src/lib/mcp/tools/register.ts`)
 - `POST /api/agent/auth/claim` — start OTP claim (anonymous start only)
 - `POST /api/agent/auth/claim/complete` — finish claim, match/JIT the user
 - `POST /api/agent/auth/revoke` — back-channel revocation (`application/logout+jwt`)

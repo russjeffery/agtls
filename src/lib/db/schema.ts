@@ -73,7 +73,7 @@ export const verification = pgTable("verification", {
 // must exist even though we add agent members programmatically.
 
 export const organization = pgTable("organization", {
-  id: text("id").primaryKey(), // nanoid, prefix: org_
+  id: text("id").primaryKey(), // newId, prefix "org_"
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   logo: text("logo"),
@@ -82,7 +82,7 @@ export const organization = pgTable("organization", {
 });
 
 export const member = pgTable("member", {
-  id: text("id").primaryKey(), // nanoid, prefix: mem_
+  id: text("id").primaryKey(), // newId, prefix "mem_"
   organizationId: text("organization_id")
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
@@ -94,7 +94,7 @@ export const member = pgTable("member", {
 });
 
 export const invitation = pgTable("invitation", {
-  id: text("id").primaryKey(), // nanoid, prefix: inv_
+  id: text("id").primaryKey(), // newId, prefix "inv_"
   organizationId: text("organization_id")
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
@@ -109,7 +109,7 @@ export const invitation = pgTable("invitation", {
 });
 
 export const apiKey = pgTable("api_key", {
-  id: text("id").primaryKey(), // nanoid
+  id: text("id").primaryKey(), // newId, prefix "key_"
   organizationId: text("organization_id")
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" }),
@@ -135,12 +135,12 @@ export const apiKey = pgTable("api_key", {
 //
 // One row per registration created through POST /agent/auth. Covers all three
 // on-wire flows: agent-verified (ID-JAG), and the two user-claimed entrypoints
-// (anonymous start, email-verification). See src/lib/agent-auth/ and auth.md.
+// (anonymous start, service_auth). See src/lib/agent-auth/ and auth.md.
 
 export const agentRegistrationType = pgEnum("agent_registration_type", [
   "agent-provider", // agent-verified, via ID-JAG
   "anonymous", // user-claimed, anonymous start
-  "email-verification", // user-claimed, email required
+  "service_auth", // user-claimed, agent supplies login_hint (email)
 ]);
 
 export const agentRegistrationStatus = pgEnum("agent_registration_status", [
@@ -152,14 +152,14 @@ export const agentRegistrationStatus = pgEnum("agent_registration_status", [
 ]);
 
 export const agentRegistration = pgTable("agent_registration", {
-  id: text("id").primaryKey(), // nanoid, prefix: reg_
+  id: text("id").primaryKey(), // newId, prefix "reg_"
   type: agentRegistrationType("type").notNull(),
   status: agentRegistrationStatus("status").notNull(),
   requestedCredentialType: text("requested_credential_type")
     .$type<"access_token" | "api_key">()
     .notNull(),
   // The principal that owns issued credentials. Created lazily for
-  // email-verification (no principal until the claim completes).
+  // service_auth (no principal until the claim completes).
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
@@ -202,7 +202,7 @@ export const agentAssertionJti = pgTable("agent_assertion_jti", {
 
 // Append-only audit log for agent-auth state transitions.
 export const agentAuditEvent = pgTable("agent_audit_event", {
-  id: text("id").primaryKey(), // nanoid, prefix: evt_
+  id: text("id").primaryKey(), // newId, prefix "evt_"
   type: text("type").notNull(),
   registrationId: text("registration_id"),
   data: jsonb("data").$type<Record<string, unknown>>(),
@@ -223,7 +223,7 @@ export const taskPriority = pgEnum("task_priority", [
 ]);
 
 export const task = pgTable("task", {
-  id: text("id").primaryKey(), // nanoid, prefix: tsk_
+  id: text("id").primaryKey(), // newId, prefix "tsk_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
@@ -244,7 +244,7 @@ export const task = pgTable("task", {
 // ─── Webhook Endpoints & Events ───────────────────────────────────────────────
 
 export const webhookEndpoint = pgTable("webhook_endpoint", {
-  id: text("id").primaryKey(), // nanoid, prefix: whe_
+  id: text("id").primaryKey(), // newId, prefix "wh_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
@@ -260,7 +260,7 @@ export const webhookEndpoint = pgTable("webhook_endpoint", {
 });
 
 export const webhookEvent = pgTable("webhook_event", {
-  id: text("id").primaryKey(), // nanoid, prefix: wev_
+  id: text("id").primaryKey(), // newId, prefix "whe_"
   endpointId: text("endpoint_id")
     .notNull()
     .references(() => webhookEndpoint.id, { onDelete: "cascade" }),
@@ -289,7 +289,7 @@ export const webhookEvent = pgTable("webhook_event", {
 export const artifactFormat = pgEnum("artifact_format", ["markdown", "html"]);
 
 export const artifact = pgTable("artifact", {
-  id: text("id").primaryKey(), // nanoid, prefix: art_
+  id: text("id").primaryKey(), // newId, prefix "art_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
@@ -322,7 +322,7 @@ export const messageStatus = pgEnum("message_status", [
 ]);
 
 export const scheduledMessage = pgTable("scheduled_message", {
-  id: text("id").primaryKey(), // nanoid, prefix: msg_
+  id: text("id").primaryKey(), // newId, prefix "msg_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",

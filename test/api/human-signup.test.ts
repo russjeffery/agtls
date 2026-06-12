@@ -62,7 +62,7 @@ describe("human email sign-up", () => {
 });
 
 describe("humans and agents share an organization", () => {
-  it("email-verification agent claim joins the human's existing org as a member", async () => {
+  it("service_auth agent claim joins the human's existing org as a member", async () => {
     // A human with an org and an owned task.
     const human = await seedOrganization();
     const [seedUser] = await testDb
@@ -79,9 +79,8 @@ describe("humans and agents share an organization", () => {
     const regRes = await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: seedUser.email,
+          type: "service_auth",
+          login_hint: seedUser.email,
           requested_credential_type: "api_key",
         },
       })
@@ -177,9 +176,8 @@ describe("humans and agents share an organization", () => {
     const regRes = await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: email,
+          type: "service_auth",
+          login_hint: email,
           requested_credential_type: "api_key",
         },
       })

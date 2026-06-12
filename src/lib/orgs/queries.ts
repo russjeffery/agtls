@@ -22,7 +22,7 @@ export interface OrgMemberView {
   /** Registration metadata, when this member is an agent with one. */
   agent: {
     registrationId: string;
-    type: "agent-provider" | "anonymous" | "email-verification";
+    type: "agent-provider" | "anonymous" | "service_auth";
     status: "active" | "unclaimed" | "claimed" | "expired" | "revoked";
     platform: string | null;
     createdAt: Date;

@@ -323,18 +323,17 @@ describe("POST /api/agent/auth — anonymous", () => {
   });
 });
 
-// ─── Email-verification ───────────────────────────────────────────────────────
+// ─── service_auth ─────────────────────────────────────────────────────────────
 
-describe("POST /api/agent/auth — email-verification (identity_assertion + verified_email)", () => {
+describe("POST /api/agent/auth — service_auth (login_hint)", () => {
   it("registers successfully: returns 201 with claim_token, sends email, no credential field", async () => {
     const { register } = await getRoutes();
 
     const res = await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "agent@example.com",
+          type: "service_auth",
+          login_hint: "agent@example.com",
         },
       })
     );
@@ -350,7 +349,7 @@ describe("POST /api/agent/auth — email-verification (identity_assertion + veri
     }>(res);
 
     expect(body.registration_id).toMatch(/^reg_/);
-    expect(body.registration_type).toBe("email-verification");
+    expect(body.registration_type).toBe("service_auth");
     expect(body.claim_token).toBeTruthy();
     expect(body.claim_url).toContain("/api/agent/auth/claim");
     expect(body.post_claim_scopes).toEqual(["api.read", "api.write"]);
@@ -362,22 +361,21 @@ describe("POST /api/agent/auth — email-verification (identity_assertion + veri
     expect(lastClaimViewToken()).toMatch(/^cvt_/);
   });
 
-  it("rejects invalid email assertion → invalid_request 400", async () => {
+  it("rejects a login_hint that isn't a recognizable identifier → invalid_login_hint 400", async () => {
     const { register } = await getRoutes();
 
     const res = await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "not-a-valid-email",
+          type: "service_auth",
+          login_hint: "not-a-valid-email",
         },
       })
     );
 
     expect(res.status).toBe(400);
     const body = await json<{ error: string }>(res);
-    expect(body.error).toBe("invalid_request");
+    expect(body.error).toBe("invalid_login_hint");
   });
 });
 

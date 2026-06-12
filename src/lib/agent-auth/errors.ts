@@ -18,6 +18,8 @@ export type AgentAuthErrorCode =
   // request shape
   | "invalid_request"
   | "unsupported_type"
+  | "invalid_login_hint"
+  | "service_auth_not_enabled"
   // claim ceremony
   | "invalid_claim_token"
   | "claimed_or_in_flight"
@@ -41,6 +43,8 @@ const STATUS: Record<AgentAuthErrorCode, number> = {
   insufficient_user_authentication: 401,
   invalid_request: 400,
   unsupported_type: 400,
+  invalid_login_hint: 400,
+  service_auth_not_enabled: 400,
   invalid_claim_token: 404,
   claimed_or_in_flight: 409,
   claim_expired: 410,

@@ -23,6 +23,15 @@ export BETTER_AUTH_URL="http://localhost:$PORT"
 export BETTER_AUTH_SECRET="e2e-secret-not-used-for-anything-real"
 export DATABASE_URL="postgresql://e2e:e2e@localhost/e2e"
 
+# Keep the e2e server self-contained: explicitly clear any social-provider
+# credentials so a developer's .env.local can't leak GitHub/Google buttons into
+# the run (Next won't override an already-set env var from .env files). The
+# sign-up spec asserts the absence of social buttons, so this must stay empty.
+export GITHUB_CLIENT_ID=""
+export GITHUB_CLIENT_SECRET=""
+export GOOGLE_CLIENT_ID=""
+export GOOGLE_CLIENT_SECRET=""
+
 # Fresh database + email log.
 echo "[e2e] migrating test database..."
 npx tsx test/e2e/migrate-db.ts || { echo "[e2e] migration failed"; exit 1; }

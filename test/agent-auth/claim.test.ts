@@ -207,13 +207,12 @@ describe("Email-verification claim ceremony", () => {
   it("full happy path: register → OTP (from email) → complete → fresh credential issued", async () => {
     const { register, complete, listTasks } = await getRoutes();
 
-    // 1. Register with email-verification flow
+    // 1. Register with service_auth flow
     const regRes = await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "emailtest@example.com",
+          type: "service_auth",
+          login_hint: "emailtest@example.com",
           requested_credential_type: "api_key",
         },
       })
@@ -488,13 +487,12 @@ describe("getClaimView — read-only semantics", () => {
   it("returns serviceName/email without setting otpHash", async () => {
     const { register } = await getRoutes();
 
-    // Register via email-verification to get a view token
+    // Register via service_auth to get a view token
     await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "view@example.com",
+          type: "service_auth",
+          login_hint: "view@example.com",
         },
       })
     );
@@ -527,9 +525,8 @@ describe("getClaimView — read-only semantics", () => {
     await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "claimed@example.com",
+          type: "service_auth",
+          login_hint: "claimed@example.com",
         },
       })
     );
@@ -540,9 +537,8 @@ describe("getClaimView — read-only semantics", () => {
         return r2(
           makeRequest("/api/agent/auth", {
             body: {
-              type: "identity_assertion",
-              assertion_type: "verified_email",
-              assertion: "claimed2@example.com",
+              type: "service_auth",
+              login_hint: "claimed2@example.com",
             },
           })
         );
@@ -568,9 +564,8 @@ describe("getClaimView — read-only semantics", () => {
     await register(
       makeRequest("/api/agent/auth", {
         body: {
-          type: "identity_assertion",
-          assertion_type: "verified_email",
-          assertion: "expired@example.com",
+          type: "service_auth",
+          login_hint: "expired@example.com",
         },
       })
     );

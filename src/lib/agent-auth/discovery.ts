@@ -37,15 +37,21 @@ export function authorizationServerMetadata() {
       register_uri: registerUri(),
       claim_uri: claimUri(),
       revocation_uri: revocationUri(),
-      identity_types_supported: ["anonymous", "identity_assertion"],
+      identity_types_supported: [
+        "anonymous",
+        "identity_assertion",
+        "service_auth",
+      ],
       anonymous: {
         credential_types_supported: ["api_key"],
       },
       identity_assertion: {
         assertion_types_supported: [
           "urn:ietf:params:oauth:token-type:id-jag",
-          "verified_email",
         ],
+        credential_types_supported: ["access_token", "api_key"],
+      },
+      service_auth: {
         credential_types_supported: ["access_token", "api_key"],
       },
       events_supported: [REVOKED_EVENT],
@@ -69,9 +75,9 @@ register against ${SERVICE_NAME} and authenticate on behalf of a user.
   identity and receives an \`api_key\` scoped to pre-claim permissions
   immediately, then runs the OTP claim later to bind it to a real user and
   upgrade scopes.
-- **User claimed (email required)** — the agent supplies a user email at
-  registration; ${SERVICE_NAME} emails an OTP and issues no credential until the
-  claim completes.
+- **User claimed (service auth)** — the agent supplies a \`login_hint\` (the
+  user's email) at registration; ${SERVICE_NAME} authenticates the user
+  out-of-band, emails an OTP, and issues no credential until the claim completes.
 
 ## Endpoints
 
@@ -136,11 +142,11 @@ The response contains:
 
 Pre-claim keys are read-only (\`api.read\`). If you need write access from the
 start, either complete the claim (§4) or — when you know your user's email —
-register with \`{"type": "identity_assertion", "assertion_type":
-"verified_email", "assertion": "<user email>"}\` instead: the user receives an
-email, reads a one-time code back to you, and you get a full-scope key bound to
-their account. Agents on trusted platforms can present an ID-JAG
-(\`assertion_type: "urn:ietf:params:oauth:token-type:id-jag"\`) and get a
+register with \`{"type": "service_auth", "login_hint": "<user email>"}\`
+instead: the user receives an email, reads a one-time code back to you, and you
+get a full-scope key bound to their account. Agents on trusted platforms can
+present an ID-JAG (\`{"type": "identity_assertion", "assertion_type":
+"urn:ietf:params:oauth:token-type:id-jag", "assertion": "<jwt>"}\`) and get a
 full-scope credential synchronously. Full protocol details: ${base}/auth.md
 
 ## 2. Use the API
@@ -155,7 +161,10 @@ REST base: \`${base}/api\` — JSON in/out, errors in a
   POSTed to it; read events back at \`GET /api/webhooks/{id}/events\`
 
 MCP: connect to \`${base}/api/mcp\` (streamable HTTP) with the same
-\`Authorization: Bearer\` header. The same operations are exposed as tools.
+\`Authorization: Bearer\` header. The same operations are exposed as tools. You
+can also register entirely over MCP — call the \`agent_register\` tool (no
+header needed) to get your \`credential\`, then pass it as the \`api_key\`
+argument on every other tool call so your work is saved to your account.
 
 ## 3. Working without any credential
 
