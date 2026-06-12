@@ -6,7 +6,7 @@ external services** (no Neon, no SMTP, no provider JWKS endpoints).
 | Layer | Runner | What it covers | DB |
 | ----- | ------ | -------------- | -- |
 | Unit + integration | **Vitest** | pure logic, every REST route, auth, the full agent-auth (auth.md) flows | in-process **PGlite** (WASM Postgres) |
-| End-to-end | **Playwright** | the real app in a browser: landing page, content-negotiated HTML, the claim OTP ceremony | a `next dev` server backed by PGlite |
+| End-to-end | **Playwright** | the real app in a browser: landing page, JSON API, the React resource pages, the claim OTP ceremony | a `next dev` server backed by PGlite |
 
 ```bash
 npm test          # Vitest (unit + integration) — fast, no browser
@@ -53,7 +53,7 @@ test/
     email.ts               captured-email accessors
     session.ts             BetterAuth session spies
   unit/                    pure-logic + small DB-backed helpers
-  api/                     REST routes: tasks, subtasks, webhooks (+ ingestion)
+  api/                     REST routes: tasks, webhooks (+ ingestion)
   agent-auth/              register / claim / revoke / rate-limit flows
   e2e/                     Playwright specs + migrate-db + helpers
 test/scripts/e2e.sh             E2E orchestrator (migrate → next dev → playwright)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { makeRequest, json, routeParams } from "../helpers/request";
 import { seedOrganization } from "../helpers/seed";
-import { mockSession } from "../helpers/session";
+import { mockSession, mockNoSession } from "../helpers/session";
 
 // The logged-in browser experience: a BetterAuth session (no API key) scopes
 // list endpoints to the orgs the user belongs to, grants access to owned
@@ -125,49 +125,64 @@ describe("session access to items", () => {
     expect(res.status).toBe(200);
   });
 
-  it("a subtask created by a session user under an owned task inherits the org", async () => {
-    const { POST: subtaskPost } = await import(
-      "@/app/api/tasks/[id]/subtasks/route"
-    );
+  it("a task created by a session user (no API key) is owned, not public", async () => {
+    // Regression: the HTML create form posts with a session cookie but no
+    // Bearer token. The resource must belong to the user's org — not become a
+    // public, claim-token resource readable by anyone with the ID.
+    const { POST } = await import("@/app/api/tasks/route");
+    const { GET } = await import("@/app/api/tasks/[id]/route");
     const org = await seedOrganization();
-    const { id: taskId } = await createOwnedTask(org.key);
 
     mockSession(org.userId);
-    const res = await subtaskPost(
-      makeRequest(`/api/tasks/${taskId}/subtasks`, { body: { title: "Sub" } }),
-      routeParams({ id: taskId })
+    const createRes = await POST(
+      makeRequest("/api/tasks", { body: { name: "From the form" } })
     );
-    expect(res.status).toBe(201);
-    const body = await json<{ organization_id: string }>(res);
+    expect(createRes.status).toBe(201);
+    const body = await json<{ id: string; organization_id: string; claim_token?: string }>(
+      createRes
+    );
     expect(body.organization_id).toBe(org.organizationId);
+    expect(body.claim_token).toBeUndefined();
+
+    // An anonymous reader must now be denied — the reported bug returned 200.
+    mockNoSession();
+    const res = await GET(
+      makeRequest(`/api/tasks/${body.id}`),
+      routeParams({ id: body.id })
+    );
+    expect(res.status).toBe(403);
   });
+
 });
 
-describe("browser HTML responses", () => {
-  it("shows a sign-in prompt instead of a list to anonymous browsers", async () => {
+// Content negotiation was removed: the API is JSON-only and browsing lives at
+// React pages (/tasks, /webhooks, …). A browser Accept header must no longer
+// change the response — these guard that the JSON contract holds regardless.
+describe("Accept: text/html returns JSON (content negotiation removed)", () => {
+  it("returns a JSON list to an anonymous browser, never HTML", async () => {
     const { GET } = await import("@/app/api/tasks/route");
+    mockNoSession();
     const res = await GET(makeRequest("/api/tasks", { accept: HTML }));
     expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain("Sign in to see your tasks");
-    expect(html).toContain("/sign-in");
+    expect(res.headers.get("content-type") ?? "").toContain("application/json");
+    const body = await json<{ object: string; data: unknown[] }>(res);
+    expect(body.object).toBe("list");
+    expect(Array.isArray(body.data)).toBe(true);
   });
 
-  it("shows the account menu to a signed-in browser", async () => {
+  it("returns a JSON list to a signed-in browser, never HTML", async () => {
     const { GET } = await import("@/app/api/tasks/route");
     const org = await seedOrganization();
 
     mockSession(org.userId, "human@example.com");
     const res = await GET(makeRequest("/api/tasks", { accept: HTML }));
-    const html = await res.text();
-    expect(html).toContain("account-menu");
-    expect(html).toContain("human@example.com");
-    expect(html).toContain("/dashboard");
-    expect(html).toContain("/keys");
-    expect(html).toContain("/account");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type") ?? "").toContain("application/json");
+    const body = await json<{ object: string }>(res);
+    expect(body.object).toBe("list");
   });
 
-  it("serves a friendly 403 page for an inaccessible task", async () => {
+  it("returns a JSON 403 for an inaccessible task, never an HTML page", async () => {
     const { GET } = await import("@/app/api/tasks/[id]/route");
     const a = await seedOrganization();
     const b = await seedOrganization();
@@ -179,23 +194,24 @@ describe("browser HTML responses", () => {
       routeParams({ id })
     );
     expect(res.status).toBe(403);
-    expect(res.headers.get("content-type") ?? "").toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("don't have access");
+    expect(res.headers.get("content-type") ?? "").toContain("application/json");
+    const body = await json<{ error: { message: string } }>(res);
+    expect(body.error).toBeTruthy();
   });
 
-  it("serves a friendly 404 page for a missing task", async () => {
+  it("returns a JSON 404 for a missing task, never an HTML page", async () => {
     const { GET } = await import("@/app/api/tasks/[id]/route");
     const res = await GET(
       makeRequest("/api/tasks/tsk_ghost", { accept: HTML }),
       routeParams({ id: "tsk_ghost" })
     );
     expect(res.status).toBe(404);
-    const html = await res.text();
-    expect(html).toContain("Task not found");
+    expect(res.headers.get("content-type") ?? "").toContain("application/json");
+    const body = await json<{ error: { message: string } }>(res);
+    expect(body.error).toBeTruthy();
   });
 
-  it("serves a friendly 403 page for another org's webhook endpoint", async () => {
+  it("returns a JSON 403 for another org's webhook endpoint", async () => {
     const { POST } = await import("@/app/api/webhooks/route");
     const { GET } = await import("@/app/api/webhooks/[id]/route");
     const a = await seedOrganization();
@@ -209,7 +225,6 @@ describe("browser HTML responses", () => {
       routeParams({ id })
     );
     expect(res.status).toBe(403);
-    const html = await res.text();
-    expect(html).toContain("don't have access");
+    expect(res.headers.get("content-type") ?? "").toContain("application/json");
   });
 });

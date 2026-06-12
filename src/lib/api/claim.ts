@@ -1,19 +1,17 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   task,
-  subtask,
   webhookEndpoint,
   webhookEvent,
-  memory,
+  artifact,
   scheduledMessage,
 } from "@/lib/db/schema";
 import { newClaimToken, sha256, hashesEqual } from "@/lib/agent-auth/tokens";
 import {
   serializeTask,
-  serializeSubtask,
   serializeWebhookEndpoint,
-  serializeMemory,
+  serializeArtifact,
   serializeScheduledMessage,
 } from "./serialize";
 
@@ -85,7 +83,7 @@ function assertClaimable(
 
 /**
  * Transfer ownership of a publicly-created resource to `organizationId`. Dispatches
- * on the ID prefix (tsk_, sub_, wh_). Verifies the claim token against the
+ * on the ID prefix (tsk_, wh_, art_, msg_). Verifies the claim token against the
  * stored hash, sets organization_id, and clears the token so a claim is one-shot.
  * Throws ClaimError for every failure mode.
  */
@@ -105,31 +103,8 @@ export async function claimResource(
       .set({ organizationId, claimTokenHash: null, updatedAt: now })
       .where(eq(task.id, id))
       .returning();
-    // Public subtasks under the task move with it; their own claim tokens are
-    // consumed because ownership is now settled.
-    await db
-      .update(subtask)
-      .set({ organizationId, claimTokenHash: null, updatedAt: now })
-      .where(and(eq(subtask.taskId, id), isNull(subtask.organizationId)));
 
     return { data: serializeTask(updated), path: `/api/tasks/${id}` };
-  }
-
-  if (id.startsWith("sub_")) {
-    const [row] = await db
-      .select()
-      .from(subtask)
-      .where(eq(subtask.id, id))
-      .limit(1);
-    assertClaimable("subtask", id, row, claimToken);
-
-    const [updated] = await db
-      .update(subtask)
-      .set({ organizationId, claimTokenHash: null, updatedAt: now })
-      .where(eq(subtask.id, id))
-      .returning();
-
-    return { data: serializeSubtask(updated), path: `/api/subtasks/${id}` };
   }
 
   if (id.startsWith("wh_")) {
@@ -157,21 +132,21 @@ export async function claimResource(
     };
   }
 
-  if (id.startsWith("memo_")) {
+  if (id.startsWith("art_")) {
     const [row] = await db
       .select()
-      .from(memory)
-      .where(eq(memory.id, id))
+      .from(artifact)
+      .where(eq(artifact.id, id))
       .limit(1);
-    assertClaimable("memory", id, row, claimToken);
+    assertClaimable("artifact", id, row, claimToken);
 
     const [updated] = await db
-      .update(memory)
+      .update(artifact)
       .set({ organizationId, claimTokenHash: null, updatedAt: now })
-      .where(eq(memory.id, id))
+      .where(eq(artifact.id, id))
       .returning();
 
-    return { data: serializeMemory(updated), path: `/api/memories/${id}` };
+    return { data: serializeArtifact(updated), path: `/api/artifacts/${id}` };
   }
 
   if (id.startsWith("msg_")) {
@@ -196,6 +171,6 @@ export async function claimResource(
 
   throw new ClaimError(
     "unsupported_id",
-    `'${id}' is not a claimable resource ID. Expected a tsk_, sub_, wh_, memo_, or msg_ ID.`
+    `'${id}' is not a claimable resource ID. Expected a tsk_, wh_, art_, or msg_ ID.`
   );
 }

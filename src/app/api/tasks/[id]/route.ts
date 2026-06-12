@@ -1,18 +1,15 @@
 import { NextRequest } from "next/server";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { task, subtask } from "@/lib/db/schema";
+import { task } from "@/lib/db/schema";
 import {
   resolveViewer,
   viewerCanAccess,
-  viewerUser,
   type Viewer,
 } from "@/lib/api/middleware";
 import { ok, noContent, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
-import { serializeTask, serializeSubtask } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse, errorHtmlResponse } from "@/lib/api/html";
+import { serializeTask } from "@/lib/api/serialize";
 import { taskPatchSchema as patchSchema } from "@/lib/api/schemas";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -52,116 +49,10 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     .limit(1);
 
   const { row: found, allowed } = checkOwnership(row, viewer);
-  if (!found) {
-    if (wantsHtml(request)) {
-      return errorHtmlResponse(
-        {
-          status: 404,
-          title: "Task not found",
-          message: `No task with ID '${id}' exists. It may have been deleted.`,
-          user: viewerUser(viewer),
-        },
-        request
-      );
-    }
-    return errorResponse(errors.notFound("task", id), 404);
-  }
-  if (!allowed) {
-    if (wantsHtml(request)) {
-      return errorHtmlResponse(
-        {
-          status: 403,
-          title: "You don't have access to this task",
-          message:
-            "This task belongs to another organization. Sign in with an account that's a member of the owning organization, or use its API key.",
-          user: viewerUser(viewer),
-        },
-        request
-      );
-    }
-    return errorResponse(errors.forbidden(), 403);
-  }
+  if (!found) return errorResponse(errors.notFound("task", id), 404);
+  if (!allowed) return errorResponse(errors.forbidden(), 403);
 
-  const serialized = serializeTask(found);
-
-  if (wantsHtml(request)) {
-    const subtaskRows = await db
-      .select()
-      .from(subtask)
-      .where(eq(subtask.taskId, found.id))
-      .orderBy(desc(subtask.createdAt))
-      .limit(5);
-
-    return htmlResponse(
-      {
-        title: found.id,
-        objectType: "task",
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "tasks", href: "/api/tasks" },
-          { label: found.id },
-        ],
-        user: viewerUser(viewer),
-        resource: serialized,
-        childList: {
-          title: "Subtasks",
-          items: subtaskRows.map(serializeSubtask) as Record<string, unknown>[],
-          columns: [
-            { key: "id", label: "ID", mono: true },
-            { key: "title", label: "Title" },
-            {
-              key: "status",
-              label: "Status",
-              badge: {
-                todo: "#a1a1aa",
-                in_progress: "#60a5fa",
-                done: "#34d399",
-                cancelled: "#71717a",
-              },
-            },
-            {
-              key: "priority",
-              label: "Priority",
-              badge: {
-                low: "#71717a",
-                medium: "#fbbf24",
-                high: "#fb923c",
-                urgent: "#f87171",
-              },
-            },
-          ],
-          itemHref: (item) => `/api/subtasks/${(item as { id: string }).id}`,
-          viewAllHref: `/api/tasks/${found.id}/subtasks`,
-          emptyMessage: "No subtasks yet.",
-        },
-        apiRef: [
-          {
-            method: "GET",
-            path: `/api/tasks/${found.id}`,
-            description: "Get this task.",
-          },
-          {
-            method: "PATCH",
-            path: `/api/tasks/${found.id}`,
-            description: "Update name or description.",
-          },
-          {
-            method: "DELETE",
-            path: `/api/tasks/${found.id}`,
-            description: "Delete this task permanently.",
-          },
-          {
-            method: "GET",
-            path: `/api/tasks/${found.id}/subtasks`,
-            description: "List subtasks in this task.",
-          },
-        ],
-      },
-      request
-    );
-  }
-
-  return ok(serialized);
+  return ok(serializeTask(found));
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
@@ -200,19 +91,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   };
   if (body.name !== undefined) updates.name = body.name;
   if (body.description !== undefined) updates.description = body.description;
+  if (body.priority !== undefined) updates.priority = body.priority;
+  if (body.due_at !== undefined) {
+    updates.dueAt = body.due_at != null ? new Date(body.due_at * 1000) : null;
+  }
+  if (body.labels !== undefined) updates.labels = body.labels;
 
   const [updated] = await db
     .update(task)
     .set(updates)
     .where(eq(task.id, id))
     .returning();
-
-  if (wantsHtml(request)) {
-    return Response.redirect(
-      new URL(`/api/tasks/${updated.id}`, request.url).toString(),
-      303
-    );
-  }
 
   return ok(serializeTask(updated));
 }
@@ -241,13 +130,6 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   if (!allowed) return errorResponse(errors.forbidden(), 403);
 
   await db.delete(task).where(eq(task.id, id));
-
-  if (wantsHtml(request)) {
-    return Response.redirect(
-      new URL(`/api/tasks`, request.url).toString(),
-      303
-    );
-  }
 
   return noContent();
 }

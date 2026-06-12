@@ -7,8 +7,6 @@ import { createOrgWithOwner } from "@/lib/orgs/service";
 import { created, errorResponse, listResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeOrganization } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
 import { headers } from "next/headers";
 
 async function requireSession() {
@@ -31,9 +29,6 @@ export async function GET(request: NextRequest) {
   try {
     session = await requireSession();
   } catch {
-    if (wantsHtml(request)) {
-      return Response.redirect(new URL("/sign-in", request.url).toString(), 302);
-    }
     return errorResponse(errors.unauthorized(), 401);
   }
 
@@ -72,38 +67,6 @@ export async function GET(request: NextRequest) {
   const hasMore = rows.length > limit;
   const data = rows.slice(0, limit).map(serializeOrganization);
   const nextCursor = hasMore ? data[data.length - 1].id : null;
-
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: "Organizations",
-        user: { name: session.user.name, email: session.user.email },
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "organizations", href: "/api/organizations" },
-        ],
-        description:
-          "Organizations you belong to. Humans and agents are both members; API keys authenticate requests against an organization's resources.",
-        list: {
-          items: data as Record<string, unknown>[],
-          columns: [
-            { key: "id", label: "ID", mono: true },
-            { key: "name", label: "Name" },
-            { key: "slug", label: "Slug", mono: true },
-            { key: "created_at", label: "Created" },
-          ],
-          itemHref: (item) => `/api/organizations/${(item as { id: string }).id}`,
-          hasMore,
-          nextCursor,
-        },
-        apiRef: [
-          { method: "GET", path: "/api/organizations", description: "List organizations you belong to. Requires browser session." },
-          { method: "POST", path: "/api/organizations", description: "Create an organization." },
-        ],
-      },
-      request
-    );
-  }
 
   return listResponse(data, hasMore, nextCursor);
 }
@@ -144,8 +107,5 @@ export async function POST(request: NextRequest) {
     .where(eq(organization.id, orgId))
     .limit(1);
 
-  if (wantsHtml(request)) {
-    return Response.redirect(new URL(`/api/organizations/${row.id}`, request.url).toString(), 303);
-  }
   return created(serializeOrganization(row));
 }

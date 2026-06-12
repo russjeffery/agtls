@@ -6,7 +6,6 @@ import { useTrustedProvider, mintIdJag } from "../helpers/agent-auth";
 import { testDb } from "../helpers/db";
 import {
   task as taskTable,
-  subtask as subtaskTable,
   webhookEndpoint as endpointTable,
   webhookEvent as eventTable,
 } from "@/lib/db/schema";
@@ -70,26 +69,6 @@ describe("claim_token on public creation", () => {
     expect(body.claim_token).toMatch(/^clm_/);
   });
 
-  it("returns claim_token for an unauthenticated standalone subtask", async () => {
-    const { POST } = await import("@/app/api/subtasks/route");
-    const res = await POST(makeRequest("/api/subtasks", { body: { title: "Sub" } }));
-    expect(res.status).toBe(201);
-    const body = await json<CreatedPublic>(res);
-    expect(body.id).toMatch(/^sub_/);
-    expect(body.claim_token).toMatch(/^clm_/);
-  });
-
-  it("returns claim_token for a subtask created under a public task", async () => {
-    const parent = await createPublicTask("Parent");
-    const { POST } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const res = await POST(
-      makeRequest(`/api/tasks/${parent.id}/subtasks`, { body: { title: "Nested" } }),
-      routeParams({ id: parent.id })
-    );
-    expect(res.status).toBe(201);
-    const body = await json<CreatedPublic>(res);
-    expect(body.claim_token).toMatch(/^clm_/);
-  });
 });
 
 // ─── POST /api/claim/{id} ────────────────────────────────────────────────────
@@ -109,39 +88,6 @@ describe("POST /api/claim/[id]", () => {
     const [row] = await testDb.select().from(taskTable).where(eq(taskTable.id, created.id));
     expect(row.organizationId).toBe(organizationId);
     expect(row.claimTokenHash).toBeNull();
-  });
-
-  it("claiming a task also claims its public subtasks", async () => {
-    const created = await createPublicTask();
-    const { POST: subPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const subRes = await subPost(
-      makeRequest(`/api/tasks/${created.id}/subtasks`, { body: { title: "Child" } }),
-      routeParams({ id: created.id })
-    );
-    const sub = await json<CreatedPublic>(subRes);
-
-    const { key, organizationId } = await seedOrganization();
-    const res = await claim(created.id, created.claim_token, key);
-    expect(res.status).toBe(200);
-
-    const [subRow] = await testDb
-      .select()
-      .from(subtaskTable)
-      .where(eq(subtaskTable.id, sub.id));
-    expect(subRow.organizationId).toBe(organizationId);
-    expect(subRow.claimTokenHash).toBeNull();
-  });
-
-  it("claims a public subtask on its own", async () => {
-    const { POST } = await import("@/app/api/subtasks/route");
-    const createRes = await POST(makeRequest("/api/subtasks", { body: { title: "Solo" } }));
-    const created = await json<CreatedPublic>(createRes);
-
-    const { key, organizationId } = await seedOrganization();
-    const res = await claim(created.id, created.claim_token, key);
-    expect(res.status).toBe(200);
-    const body = await json<{ organization_id: string }>(res);
-    expect(body.organization_id).toBe(organizationId);
   });
 
   it("claims a public webhook endpoint and re-homes its events", async () => {
@@ -262,7 +208,7 @@ describe("POST /api/claim/[id]", () => {
     expect(res.status).toBe(400);
   });
 
-  it("redirects to the resource page after claim with Accept: text/html", async () => {
+  it("returns 200 JSON after claim even with Accept: text/html (no redirect)", async () => {
     const created = await createPublicTask();
     const { key } = await seedOrganization();
     const res = await claim(
@@ -271,8 +217,10 @@ describe("POST /api/claim/[id]", () => {
       key,
       "text/html,application/xhtml+xml"
     );
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toContain(`/api/tasks/${created.id}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    const body = await json<{ id: string }>(res);
+    expect(body.id).toBe(created.id);
   });
 });
 

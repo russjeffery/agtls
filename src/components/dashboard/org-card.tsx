@@ -109,7 +109,7 @@ export function OrgCard({ org }: { org: OrgView }) {
             <p className="m-0 text-sm" style={{ color: "var(--text-faint)" }}>
               No active keys.{" "}
               <a
-                href={`/api/organizations/${org.id}/keys`}
+                href="/keys"
                 style={{ color: "var(--ds-accent)" }}
               >
                 Create one

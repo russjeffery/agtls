@@ -1,15 +1,11 @@
-import { NextRequest } from "next/server";
-import { resolveViewer, viewerUser } from "@/lib/api/middleware";
-import { errorResponse, ok } from "@/lib/api/response";
-import { errors } from "@/lib/api/errors";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
+import { ok } from "@/lib/api/response";
 
 const RESOURCES = [
   {
     resource: "tasks",
     href: "/api/tasks",
-    description: "Tasks and their subtasks — create, list, and track work.",
+    description:
+      "Tasks — create, list, and track work with priorities, due dates, and labels.",
   },
   {
     resource: "webhooks",
@@ -17,9 +13,9 @@ const RESOURCES = [
     description: "Webhook endpoints and delivered events.",
   },
   {
-    resource: "memories",
-    href: "/api/memories",
-    description: "Markdown notes an agent can store and recall.",
+    resource: "artifacts",
+    href: "/api/artifacts",
+    description: "Markdown files an agent can store and recall.",
   },
   {
     resource: "messages",
@@ -33,39 +29,7 @@ const RESOURCES = [
   },
 ];
 
-export async function GET(request: NextRequest) {
-  let viewer;
-  try {
-    viewer = await resolveViewer(request);
-  } catch (e: unknown) {
-    return errorResponse(
-      errors.unauthorized(e instanceof Error ? e.message : undefined),
-      401
-    );
-  }
-
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: "API",
-        breadcrumb: [{ label: "API", href: "/api" }],
-        description:
-          "Every endpoint speaks JSON to agents and renders HTML in a browser. Pick a resource to explore.",
-        user: viewerUser(viewer),
-        list: {
-          items: RESOURCES as unknown as Record<string, unknown>[],
-          columns: [
-            { key: "resource", label: "Resource", mono: true },
-            { key: "description", label: "Description" },
-          ],
-          itemHref: (item) => String(item.href),
-          hasMore: false,
-        },
-      },
-      request
-    );
-  }
-
+export async function GET() {
   return ok({
     object: "api",
     resources: RESOURCES.map(({ resource, href, description }) => ({

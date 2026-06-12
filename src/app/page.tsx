@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Braces, Plug, Zap, ShieldCheck, ListChecks, Webhook, Radio, FileText } from "lucide-react";
+import { ArrowRight, BookOpen, KeyRound, Plug, Braces, Users, ListChecks, Webhook, Radio, FileText, Clock, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { Logo } from "@/components/logo";
@@ -21,14 +21,18 @@ async function SiteHeader() {
         <Logo height={50} />
       </Link>
       <nav className="flex gap-5 ml-3">
-        {["Tools", "Docs", "Pricing", "Changelog"].map((item) => (
+        {[
+          { label: "Tools", href: "#tools" },
+          { label: "Docs", href: "/api" },
+          { label: "GitHub", href: "https://github.com/russjeffery/agtls" },
+        ].map((item) => (
           <a
-            key={item}
-            href="#"
+            key={item.label}
+            href={item.href}
             className="text-sm transition-colors no-underline"
             style={{ color: "var(--text-muted)" }}
           >
-            {item}
+            {item.label}
           </a>
         ))}
       </nav>
@@ -87,7 +91,7 @@ function Hero() {
           className="eyebrow"
           style={{ color: "var(--ds-accent)" }}
         >
-          {"// MCP · HTTP · CLI"}
+          {"// REST · MCP · No signup required"}
         </span>
         <h1
           className="mt-5"
@@ -100,8 +104,8 @@ function Hero() {
             color: "var(--text-strong)",
           }}
         >
-          Tools for agents.<br />
-          <em style={{ color: "var(--ds-accent)", fontStyle: "italic" }}>One endpoint</em> they can call.
+          Tools your agent<br />
+          can use <em style={{ color: "var(--ds-accent)", fontStyle: "italic" }}>right now</em>.
         </h1>
         <p
           className="mt-6 mx-auto"
@@ -113,12 +117,14 @@ function Hero() {
             maxWidth: "56ch",
           }}
         >
-          Connect tasks, webhooks and more. Your agent gets typed actions
-          over MCP or plain HTTP — no SDKs, no glue code.
+          Task lists, webhook catchers, artifact storage, scheduled wake-ups.
+          Plain HTTP or MCP, no API key required — your agent makes one call
+          and starts working. Claim its resources into your org whenever
+          you&apos;re ready.
         </p>
         <div className="flex gap-4 justify-center mt-9">
           <a
-            href="/sign-up"
+            href="#curl"
             className="inline-flex items-center gap-2 font-semibold px-5 py-3.5 rounded no-underline transition-colors text-sm"
             style={{
               fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
@@ -126,10 +132,10 @@ function Hero() {
               color: "var(--text-on-accent)",
             }}
           >
-            Get your API key <ArrowRight size={15} />
+            Start with one curl <ArrowRight size={15} />
           </a>
           <a
-            href="#"
+            href="/api"
             className="inline-flex items-center gap-2 text-sm px-5 py-3.5 rounded no-underline transition-colors"
             style={{
               fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
@@ -137,12 +143,13 @@ function Hero() {
               border: "1px solid var(--line-2)",
             }}
           >
-            <BookOpen size={15} /> Read the docs
+            <BookOpen size={15} /> Read the API docs
           </a>
         </div>
 
         {/* Terminal block */}
         <div
+          id="curl"
           className="mt-14 mx-auto text-left overflow-hidden"
           style={{
             maxWidth: "720px",
@@ -186,15 +193,19 @@ function Hero() {
             }}
           >
             <span style={{ color: "var(--text-faint)" }}>$</span>{" "}
-            <span style={{ color: "var(--ds-accent)" }}>agtools</span>{" connect stripe --scope read\n"}
-            <span style={{ color: "var(--text-faint)" }}>✓ connected · 14 tools exposed{"\n\n"}</span>
-            <span style={{ color: "var(--text-faint)" }}>$</span>{" "}
-            <span style={{ color: "var(--ds-accent)" }}>agtools</span>{" tools list --json\n"}
-            {"{\n  "}
-            <span style={{ color: "var(--amber-400)" }}>&quot;stripe.charges.create&quot;</span>
-            {': { "args": 6, "scope": "write" },\n  '}
-            <span style={{ color: "var(--amber-400)" }}>&quot;stripe.refunds.list&quot;</span>
-            {':  { "args": 3, "scope": "read"  }\n}'}
+            <span style={{ color: "var(--ds-accent)" }}>curl</span>{" -X POST https://agtls.dev/api/tasks \\\n"}
+            {"    -d '"}
+            <span style={{ color: "var(--amber-400)" }}>{'{"name": "Review PR #142", "priority": "high"}'}</span>
+            {"'\n\n{\n  "}
+            <span style={{ color: "var(--amber-400)" }}>&quot;id&quot;</span>
+            {': "tsk_8f2k1x",\n  '}
+            <span style={{ color: "var(--amber-400)" }}>&quot;object&quot;</span>
+            {': "task",\n  '}
+            <span style={{ color: "var(--amber-400)" }}>&quot;status&quot;</span>
+            {': "pending",\n  '}
+            <span style={{ color: "var(--amber-400)" }}>&quot;claim_url&quot;</span>
+            {': "/api/claim/tsk_8f2k1x"\n}\n\n'}
+            <span style={{ color: "var(--text-faint)" }}># No key. No signup. Claim it into your org later.</span>
           </pre>
         </div>
       </div>
@@ -204,24 +215,24 @@ function Hero() {
 
 const FEATURES = [
   {
-    icon: <Braces size={20} />,
-    title: "Typed by default",
-    body: "Every tool ships a JSON schema, so agents never guess an argument or fumble a call.",
+    icon: <KeyRound size={20} />,
+    title: "No key required",
+    body: "Resources are public by default. Your agent creates a task with one unauthenticated call; a one-time claim token lets you take ownership later.",
   },
   {
     icon: <Plug size={20} />,
-    title: "One auth model",
-    body: "Connect once. Scope per tool. Rotate keys without touching a single line of agent code.",
+    title: "REST and MCP",
+    body: "Every tool is a typed JSON API and an MCP tool from one endpoint. OpenAPI 3.1 spec at /api/openapi.json.",
   },
   {
-    icon: <Zap size={20} />,
-    title: "12ms p50",
-    body: "A thin, regional proxy in front of every integration. Calls return before your agent blinks.",
+    icon: <Braces size={20} />,
+    title: "JSON for agents, HTML for you",
+    body: "Every endpoint content-negotiates. Your agent gets JSON; you open the same URL in a browser and see the data.",
   },
   {
-    icon: <ShieldCheck size={20} />,
-    title: "Audited & scoped",
-    body: "Read, write or admin per tool. Every invocation is logged, attributable and revocable.",
+    icon: <Users size={20} />,
+    title: "Agents are members",
+    body: "Humans and agents sit in the same organization. Sign in and see every agent with access to your resources — and revoke them.",
   },
 ];
 
@@ -230,7 +241,7 @@ function Features() {
     <section className="max-w-5xl mx-auto px-8 py-20">
       <div className="mb-10">
         <span className="eyebrow" style={{ color: "var(--ds-accent)" }}>
-          {"// Why agtools"}
+          // humans welcome too
         </span>
         <h2
           className="mt-3"
@@ -299,40 +310,41 @@ const TOOLS = [
   {
     icon: <ListChecks size={17} />,
     name: "Tasks",
-    cat: "task management",
+    cat: "task tracking",
     badge: "live",
     path: "/api/tasks",
-    desc: "Create task containers, add subtasks, track status and priority.",
-  },
-  {
-    icon: <Webhook size={17} />,
-    name: "Webhooks",
-    cat: "event capture",
-    badge: "live",
-    path: "/api/webhooks",
-    desc: "Receive, store, and inspect inbound webhooks.",
-  },
-  {
-    icon: <Radio size={17} />,
-    name: "Pub/Sub",
-    cat: "messaging",
-    badge: "soon",
-    path: "/api/channels",
-    desc: "Publish messages and subscribe via webhook or poll.",
+    desc: "Create and track work with priorities, due dates, and labels.",
   },
   {
     icon: <FileText size={17} />,
-    name: "Gist",
+    name: "Artifacts",
     cat: "storage",
-    badge: "soon",
-    path: "/api/gists",
-    desc: "Store and retrieve text blobs with a key.",
+    badge: "live",
+    path: "/api/artifacts",
+    desc: "Markdown files an agent can write now and recall in a later session.",
   },
+  {
+    icon: <Clock size={17} />,
+    name: "Scheduled Messages",
+    cat: "scheduling",
+    badge: "live",
+    path: "/api/messages",
+    desc: "Schedule an HTTP request for the future — wake an agent up, on time.",
+  },
+  {
+    icon: <Webhook size={17} />,
+    name: "Webhook Catcher",
+    cat: "event capture",
+    badge: "live",
+    path: "/api/webhooks",
+    desc: "A URL that catches anything sent to it. Store, list, and inspect every event.",
+  }
 ];
 
 function Tools() {
   return (
     <section
+      id="tools"
       className="py-20"
       style={{ borderTop: "1px solid var(--line-1)" }}
     >
@@ -354,7 +366,7 @@ function Tools() {
             If it helps agents ship, it&apos;s a tool.
           </h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {TOOLS.map((t) => (
             <div
               key={t.name}
@@ -454,7 +466,7 @@ function Tools() {
 
 function McpSection() {
   return (
-    <section className="max-w-5xl mx-auto px-8 pb-20">
+    <section id="mcp" className="max-w-5xl mx-auto px-8 pb-20">
       <div
         className="p-6 space-y-3"
         style={{
@@ -494,7 +506,8 @@ function McpSection() {
             color: "var(--text-muted)",
           }}
         >
-          All tools are available via the Model Context Protocol. Pass your API key as{" "}
+          All tools are available via the Model Context Protocol (Streamable
+          HTTP). API key optional — pass{" "}
           <code
             style={{
               fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
@@ -503,6 +516,16 @@ function McpSection() {
             }}
           >
             Authorization: Bearer agt_…
+          </code>{" "}
+          to scope tools to your org. Tools:{" "}
+          <code
+            style={{
+              fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
+              fontSize: "13px",
+              color: "var(--gray-300)",
+            }}
+          >
+            tasks_* · webhook_* · artifact_* · messages_* · claim
           </code>
         </p>
       </div>
@@ -527,50 +550,64 @@ function CtaBand() {
             fontWeight: 500,
             letterSpacing: "-0.02em",
             color: "var(--text-strong)",
-            maxWidth: "14ch",
+            maxWidth: "22ch",
             margin: 0,
           }}
         >
-          Give your agent something to do.
+          Your agent could be using this before you finish this sentence.
         </h2>
-        <a
-          href="/sign-up"
-          className="inline-flex items-center gap-2 font-semibold px-5 py-3.5 rounded no-underline transition-colors text-sm"
-          style={{
-            fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
-            background: "var(--ds-accent)",
-            color: "var(--text-on-accent)",
-          }}
-        >
-          Get your API key <ArrowRight size={15} />
-        </a>
+        <div className="flex flex-col items-start gap-3">
+          <a
+            href="/sign-up"
+            className="inline-flex items-center gap-2 font-semibold px-5 py-3.5 rounded no-underline transition-colors text-sm"
+            style={{
+              fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
+              background: "var(--ds-accent)",
+              color: "var(--text-on-accent)",
+            }}
+          >
+            Get an API key <ArrowRight size={15} />
+          </a>
+          <a
+            href="/api"
+            className="inline-flex items-center gap-2 text-sm px-5 py-3.5 rounded no-underline transition-colors"
+            style={{
+              fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
+              color: "var(--text-body)",
+              border: "1px solid var(--line-2)",
+            }}
+          >
+            GET /api — explore without one
+          </a>
+        </div>
       </div>
     </section>
   );
 }
 
-function AuthNote() {
-  return (
-    <div className="max-w-5xl mx-auto px-8 pb-8">
-      <p
-        style={{
-          fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
-          fontSize: "12px",
-          color: "var(--text-faint)",
-          margin: 0,
-        }}
-      >
-        No API key? Resources are public by default — anyone with the ID can read and write.
-        Create an organization to own your resources.
-      </p>
-    </div>
-  );
-}
-
 const FOOTER_COLS = [
-  { title: "Product", links: ["Tools", "Pricing", "Status"] },
-  { title: "Developers", links: ["Docs", "API", "MCP"] },
-  { title: "Company", links: ["About", "Blog", "Changelog"] },
+  {
+    title: "Product",
+    links: [
+      { label: "Tools", href: "#tools" },
+      { label: "Dashboard", href: "/dashboard" },
+    ],
+  },
+  {
+    title: "Developers",
+    links: [
+      { label: "API reference", href: "/api" },
+      { label: "OpenAPI spec", href: "/api/openapi.json" },
+      { label: "MCP", href: "#mcp" },
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      { label: "GitHub", href: "https://github.com/russjeffery/agtls" },
+      { label: "License", href: "https://github.com/russjeffery/agtls/blob/main/LICENSE" },
+    ],
+  },
 ];
 
 function SiteFooter() {
@@ -604,7 +641,7 @@ function SiteFooter() {
               margin: "14px 0 0",
             }}
           >
-            Tools for agents. One endpoint to call them all.
+            Open-source infrastructure for AI agents. MIT licensed.
           </p>
         </div>
         <div className="flex gap-14">
@@ -625,15 +662,15 @@ function SiteFooter() {
               </h4>
               {col.links.map((link) => (
                 <a
-                  key={link}
-                  href="#"
+                  key={link.label}
+                  href={link.href}
                   className="block mb-2.5 no-underline transition-colors text-sm"
                   style={{
                     fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
                     color: "var(--text-muted)",
                   }}
                 >
-                  {link}
+                  {link.label}
                 </a>
               ))}
             </div>
@@ -661,7 +698,6 @@ export default function Home() {
         <Features />
         <Tools />
         <McpSection />
-        <AuthNote />
         <CtaBand />
       </main>
       <SiteFooter />

@@ -5,14 +5,11 @@ import { webhookEndpoint, webhookEvent } from "@/lib/db/schema";
 import {
   resolveViewer,
   viewerCanAccess,
-  viewerUser,
   type Viewer,
 } from "@/lib/api/middleware";
 import { noContent, errorResponse, listResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeWebhookEvent } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse, errorHtmlResponse } from "@/lib/api/html";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -47,33 +44,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const endpoint = await getEndpointOrNull(id);
   if (!endpoint) {
-    if (wantsHtml(request)) {
-      return errorHtmlResponse(
-        {
-          status: 404,
-          title: "Webhook endpoint not found",
-          message: `No webhook endpoint with ID '${id}' exists. It may have been deleted.`,
-          user: viewerUser(viewer),
-        },
-        request
-      );
-    }
     return errorResponse(errors.notFound("webhook endpoint", id), 404);
   }
 
   if (!checkOwnership(endpoint, viewer)) {
-    if (wantsHtml(request)) {
-      return errorHtmlResponse(
-        {
-          status: 403,
-          title: "You don't have access to these events",
-          message:
-            "This endpoint belongs to another organization. Sign in with an account that's a member of the owning organization, or use its API key.",
-          user: viewerUser(viewer),
-        },
-        request
-      );
-    }
     return errorResponse(errors.forbidden(), 403);
   }
 
@@ -109,60 +83,6 @@ export async function GET(request: NextRequest, { params }: Params) {
   const data = rows.slice(0, limit).map(serializeWebhookEvent);
   const nextCursor = hasMore ? data[data.length - 1].id : null;
 
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: "Events",
-        objectType: "webhook_events",
-        user: viewerUser(viewer),
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "webhooks", href: "/api/webhooks" },
-          { label: id, href: `/api/webhooks/${id}` },
-          { label: "events" },
-        ],
-        list: {
-          items: data as Record<string, unknown>[],
-          columns: [
-            { key: "id", label: "ID", mono: true },
-            {
-              key: "method",
-              label: "Method",
-              badge: {
-                GET: "#34d399",
-                POST: "#60a5fa",
-                PUT: "#a78bfa",
-                PATCH: "#fbbf24",
-                DELETE: "#f87171",
-              },
-            },
-            { key: "path", label: "Path", mono: true },
-            { key: "size_bytes", label: "Size" },
-            { key: "received_at", label: "Received" },
-          ],
-          itemHref: (item) =>
-            `/api/webhooks/${id}/events/${(item as { id: string }).id}`,
-          hasMore,
-          nextCursor,
-        },
-        apiRef: [
-          {
-            method: "GET",
-            path: `/api/webhooks/${id}/events`,
-            description:
-              "List events (newest first). Supports ?limit=, ?after=.",
-          },
-          {
-            method: "DELETE",
-            path: `/api/webhooks/${id}/events`,
-            description: "Clear all events for this endpoint.",
-          },
-        ],
-      },
-      request
-    );
-  }
-
   return listResponse(data, hasMore, nextCursor);
 }
 
@@ -189,13 +109,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   }
 
   await db.delete(webhookEvent).where(eq(webhookEvent.endpointId, id));
-
-  if (wantsHtml(request)) {
-    return Response.redirect(
-      new URL(`/api/webhooks/${id}/events`, request.url).toString(),
-      303
-    );
-  }
 
   return noContent();
 }

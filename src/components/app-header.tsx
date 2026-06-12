@@ -4,9 +4,11 @@ import { Logo } from "@/components/logo";
 import { AccountMenu } from "@/components/account-menu";
 
 const NAV_LINKS = [
-  { label: "Tasks", href: "/api/tasks" },
-  { label: "Webhooks", href: "/api/webhooks" },
-  { label: "Orgs", href: "/api/organizations" },
+  { label: "Tasks", href: "/tasks" },
+  { label: "Webhooks", href: "/webhooks" },
+  { label: "Artifacts", href: "/artifacts" },
+  { label: "Messages", href: "/messages" },
+  { label: "Orgs", href: "/organizations" },
 ];
 
 /**

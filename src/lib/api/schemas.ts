@@ -4,36 +4,24 @@ import { z } from "zod";
 // validation (in the route handlers) and the OpenAPI spec (src/lib/openapi).
 // Keeping them here avoids the OpenAPI builder importing from app/ route files.
 
+export const taskPriorityEnum = z.enum(["low", "medium", "high", "critical"]);
+
+export const taskLabelsSchema = z.array(z.string().min(1).max(100)).max(50);
+
 export const taskCreateSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().optional().nullable(),
+  priority: taskPriorityEnum.optional(),
+  due_at: z.number().int().optional().nullable(),
+  labels: taskLabelsSchema.optional(),
 });
 
 export const taskPatchSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().nullable().optional(),
-});
-
-export const subtaskCreateSchema = z.object({
-  title: z.string().min(1).max(500),
-  description: z.string().optional().nullable(),
-  task_id: z.string().optional().nullable(),
-  status: z.enum(["todo", "in_progress", "done", "cancelled"]).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  assignee: z.string().optional().nullable(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  due_at: z.number().int().optional().nullable(),
-});
-
-export const subtaskPatchSchema = z.object({
-  title: z.string().min(1).max(500).optional(),
-  description: z.string().nullable().optional(),
-  status: z.enum(["todo", "in_progress", "done", "cancelled"]).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  assignee: z.string().nullable().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  priority: taskPriorityEnum.optional(),
   due_at: z.number().int().nullable().optional(),
-  task_id: z.string().nullable().optional(),
+  labels: taskLabelsSchema.nullable().optional(),
 });
 
 export const webhookCreateSchema = z.object({
@@ -52,22 +40,22 @@ export const claimSchema = z.object({
   claim_token: z.string().min(1),
 });
 
-// ─── Memory ───────────────────────────────────────────────────────────────────
-// `format` is currently markdown-only but exists so other formats can be added
-// later without changing the request shape.
+// ─── Artifacts ────────────────────────────────────────────────────────────────
+// `format` decides the content type the raw endpoint serves the artifact with;
+// other formats can be added without changing the request shape.
 
-export const memoryFormatEnum = z.enum(["markdown"]);
+export const artifactFormatEnum = z.enum(["markdown", "html"]);
 
-export const memoryCreateSchema = z.object({
+export const artifactCreateSchema = z.object({
   name: z.string().min(1).max(200),
   content: z.string().max(1_000_000),
-  format: memoryFormatEnum.optional(),
+  format: artifactFormatEnum.optional(),
 });
 
-export const memoryPatchSchema = z.object({
+export const artifactPatchSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   content: z.string().max(1_000_000).optional(),
-  format: memoryFormatEnum.optional(),
+  format: artifactFormatEnum.optional(),
 });
 
 // ─── Scheduled messages ───────────────────────────────────────────────────────

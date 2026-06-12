@@ -7,6 +7,9 @@ export function serializeTask(row: {
   organizationId: string | null;
   name: string;
   description: string | null;
+  priority: "low" | "medium" | "high" | "critical";
+  dueAt: Date | null;
+  labels: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -16,39 +19,9 @@ export function serializeTask(row: {
     organization_id: row.organizationId,
     name: row.name,
     description: row.description,
-    created_at: toUnix(row.createdAt),
-    updated_at: toUnix(row.updatedAt),
-  };
-}
-
-export function serializeSubtask(row: {
-  id: string;
-  organizationId: string | null;
-  taskId: string | null;
-  title: string;
-  description: string | null;
-  status: "todo" | "in_progress" | "done" | "cancelled";
-  priority: "low" | "medium" | "high" | "urgent";
-  assignee: string | null;
-  metadata: Record<string, unknown> | null;
-  dueAt: Date | null;
-  completedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return {
-    id: row.id,
-    object: "subtask" as const,
-    organization_id: row.organizationId,
-    task_id: row.taskId,
-    title: row.title,
-    description: row.description,
-    status: row.status,
     priority: row.priority,
-    assignee: row.assignee,
-    metadata: row.metadata ?? {},
     due_at: toUnix(row.dueAt),
-    completed_at: toUnix(row.completedAt),
+    labels: row.labels ?? [],
     created_at: toUnix(row.createdAt),
     updated_at: toUnix(row.updatedAt),
   };
@@ -112,22 +85,23 @@ export function serializeWebhookEvent(row: {
   };
 }
 
-export function serializeMemory(row: {
+export function serializeArtifact(row: {
   id: string;
   organizationId: string | null;
   name: string;
   content: string;
-  format: "markdown";
+  format: "markdown" | "html";
   createdAt: Date;
   updatedAt: Date;
 }) {
   return {
     id: row.id,
-    object: "memory" as const,
+    object: "artifact" as const,
     organization_id: row.organizationId,
     name: row.name,
     content: row.content,
     format: row.format,
+    raw_url: `/api/artifacts/${row.id}/raw`,
     created_at: toUnix(row.createdAt),
     updated_at: toUnix(row.updatedAt),
   };

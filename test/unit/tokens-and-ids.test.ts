@@ -120,7 +120,6 @@ describe("newId – prefixes", () => {
     ["member", "mem_"],
     ["apiKey", "agt_"],
     ["task", "tsk_"],
-    ["subtask", "sub_"],
     ["webhookEndpoint", "wh_"],
     ["webhookEvent", "whe_"],
     ["agentRegistration", "reg_"],

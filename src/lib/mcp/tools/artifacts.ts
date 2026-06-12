@@ -2,10 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { eq, desc, lt, and } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { memory } from "@/lib/db/schema";
+import { artifact } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
-import { serializeMemory } from "@/lib/api/serialize";
+import { serializeArtifact } from "@/lib/api/serialize";
 import { mintResourceClaimToken } from "@/lib/api/claim";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ async function getAuth(apiKey?: string) {
 // ─── Ownership check ─────────────────────────────────────────────────────────
 
 function canAccess(
-  row: typeof memory.$inferSelect,
+  row: typeof artifact.$inferSelect,
   auth: { organizationId: string } | null
 ): boolean {
   if (row.organizationId === null) return true;
@@ -33,15 +33,15 @@ function errorText(msg: string) {
   return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
 }
 
-export function memoryTools(server: McpServer): void {
-  // ── memory_list ─────────────────────────────────────────────────────────────
+export function artifactTools(server: McpServer): void {
+  // ── artifact_list ─────────────────────────────────────────────────────────────
   server.tool(
-    "memory_list",
-    "List memories. Returns memories owned by the authenticated organization, or an empty list if no API key is provided (public memories stay reachable by ID via memory_get).",
+    "artifact_list",
+    "List artifacts. Returns artifacts owned by the authenticated organization, or an empty list if no API key is provided (public artifacts stay reachable by ID via artifact_get).",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
       limit: z.number().int().min(1).max(100).optional().default(20).describe("Number of results (1–100, default 20)."),
-      after: z.string().optional().describe("Cursor: ID of the last memory from the previous page."),
+      after: z.string().optional().describe("Cursor: ID of the last artifact from the previous page."),
     },
     async ({ api_key, limit = 20, after }) => {
       let auth;
@@ -55,17 +55,17 @@ export function memoryTools(server: McpServer): void {
         const empty = { object: "list", data: [], has_more: false, next_cursor: null };
         return { content: [{ type: "text" as const, text: JSON.stringify(empty, null, 2) }] };
       }
-      const ownershipCondition = eq(memory.organizationId, auth.organizationId);
+      const ownershipCondition = eq(artifact.organizationId, auth.organizationId);
 
       let cursorCondition;
       if (after) {
         const cursor = await db
-          .select({ createdAt: memory.createdAt })
-          .from(memory)
-          .where(eq(memory.id, after))
+          .select({ createdAt: artifact.createdAt })
+          .from(artifact)
+          .where(eq(artifact.id, after))
           .limit(1);
         if (cursor.length > 0) {
-          cursorCondition = lt(memory.createdAt, cursor[0].createdAt);
+          cursorCondition = lt(artifact.createdAt, cursor[0].createdAt);
         }
       }
 
@@ -75,13 +75,13 @@ export function memoryTools(server: McpServer): void {
 
       const rows = await db
         .select()
-        .from(memory)
+        .from(artifact)
         .where(conditions)
-        .orderBy(desc(memory.createdAt))
+        .orderBy(desc(artifact.createdAt))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;
-      const data = rows.slice(0, limit).map((r) => serializeMemory(r));
+      const data = rows.slice(0, limit).map((r) => serializeArtifact(r));
 
       const result = {
         object: "list",
@@ -94,13 +94,13 @@ export function memoryTools(server: McpServer): void {
     }
   );
 
-  // ── memory_get ──────────────────────────────────────────────────────────────
+  // ── artifact_get ──────────────────────────────────────────────────────────────
   server.tool(
-    "memory_get",
-    "Get a single memory by ID, including its full content.",
+    "artifact_get",
+    "Get a single artifact by ID, including its full content.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The memory ID (e.g. memo_...)."),
+      id: z.string().describe("The artifact ID (e.g. art_...)."),
     },
     async ({ api_key, id }) => {
       let auth;
@@ -110,9 +110,9 @@ export function memoryTools(server: McpServer): void {
         return errorText(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const rows = await db.select().from(memory).where(eq(memory.id, id)).limit(1);
+      const rows = await db.select().from(artifact).where(eq(artifact.id, id)).limit(1);
       if (rows.length === 0) {
-        return errorText(`No memory with ID '${id}' exists.`);
+        return errorText(`No artifact with ID '${id}' exists.`);
       }
       if (!canAccess(rows[0], auth)) {
         return errorText("You do not have access to this resource.");
@@ -120,21 +120,21 @@ export function memoryTools(server: McpServer): void {
 
       return {
         content: [
-          { type: "text" as const, text: JSON.stringify(serializeMemory(rows[0]), null, 2) },
+          { type: "text" as const, text: JSON.stringify(serializeArtifact(rows[0]), null, 2) },
         ],
       };
     }
   );
 
-  // ── memory_create ───────────────────────────────────────────────────────────
+  // ── artifact_create ───────────────────────────────────────────────────────────
   server.tool(
-    "memory_create",
-    "Create a memory. Stores a file of content for later recall. Only markdown is accepted today (the default format).",
+    "artifact_create",
+    "Create a artifact. Stores a file of content for later recall. Accepts markdown (the default) or html; the raw_url in the response serves the content with the matching content type (text/html for html).",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      name: z.string().min(1).max(200).describe("Name/label for the memory."),
-      content: z.string().max(1_000_000).describe("The memory content (markdown)."),
-      format: z.enum(["markdown"]).optional().describe("Content format (markdown, the default)."),
+      name: z.string().min(1).max(200).describe("Name/label for the artifact."),
+      content: z.string().max(1_000_000).describe("The artifact content."),
+      format: z.enum(["markdown", "html"]).optional().describe("Content format (markdown, the default, or html)."),
     },
     async ({ api_key, name, content, format }) => {
       let auth;
@@ -144,12 +144,12 @@ export function memoryTools(server: McpServer): void {
         return errorText(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const id = newId("memory");
+      const id = newId("artifact");
       const now = new Date();
       const claim = auth ? null : mintResourceClaimToken();
 
       const [row] = await db
-        .insert(memory)
+        .insert(artifact)
         .values({
           id,
           organizationId: auth ? auth.organizationId : null,
@@ -163,24 +163,25 @@ export function memoryTools(server: McpServer): void {
         .returning();
 
       const data = claim
-        ? { ...serializeMemory(row), claim_token: claim.token }
-        : serializeMemory(row);
+        ? { ...serializeArtifact(row), claim_token: claim.token }
+        : serializeArtifact(row);
 
       return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
     }
   );
 
-  // ── memory_update ───────────────────────────────────────────────────────────
+  // ── artifact_update ───────────────────────────────────────────────────────────
   server.tool(
-    "memory_update",
-    "Update a memory's name or content.",
+    "artifact_update",
+    "Update a artifact's name, content, or format.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The memory ID."),
+      id: z.string().describe("The artifact ID."),
       name: z.string().min(1).max(200).optional().describe("New name."),
-      content: z.string().max(1_000_000).optional().describe("New content (markdown)."),
+      content: z.string().max(1_000_000).optional().describe("New content."),
+      format: z.enum(["markdown", "html"]).optional().describe("New content format."),
     },
-    async ({ api_key, id, name, content }) => {
+    async ({ api_key, id, name, content, format }) => {
       let auth;
       try {
         auth = await getAuth(api_key);
@@ -188,39 +189,40 @@ export function memoryTools(server: McpServer): void {
         return errorText(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const rows = await db.select().from(memory).where(eq(memory.id, id)).limit(1);
+      const rows = await db.select().from(artifact).where(eq(artifact.id, id)).limit(1);
       if (rows.length === 0) {
-        return errorText(`No memory with ID '${id}' exists.`);
+        return errorText(`No artifact with ID '${id}' exists.`);
       }
       if (!canAccess(rows[0], auth)) {
         return errorText("You do not have access to this resource.");
       }
 
-      const updates: Partial<typeof memory.$inferInsert> = { updatedAt: new Date() };
+      const updates: Partial<typeof artifact.$inferInsert> = { updatedAt: new Date() };
       if (name !== undefined) updates.name = name;
       if (content !== undefined) updates.content = content;
+      if (format !== undefined) updates.format = format;
 
       const [updated] = await db
-        .update(memory)
+        .update(artifact)
         .set(updates)
-        .where(eq(memory.id, id))
+        .where(eq(artifact.id, id))
         .returning();
 
       return {
         content: [
-          { type: "text" as const, text: JSON.stringify(serializeMemory(updated), null, 2) },
+          { type: "text" as const, text: JSON.stringify(serializeArtifact(updated), null, 2) },
         ],
       };
     }
   );
 
-  // ── memory_delete ───────────────────────────────────────────────────────────
+  // ── artifact_delete ───────────────────────────────────────────────────────────
   server.tool(
-    "memory_delete",
-    "Delete a memory.",
+    "artifact_delete",
+    "Delete a artifact.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The memory ID to delete."),
+      id: z.string().describe("The artifact ID to delete."),
     },
     async ({ api_key, id }) => {
       let auth;
@@ -230,15 +232,15 @@ export function memoryTools(server: McpServer): void {
         return errorText(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const rows = await db.select().from(memory).where(eq(memory.id, id)).limit(1);
+      const rows = await db.select().from(artifact).where(eq(artifact.id, id)).limit(1);
       if (rows.length === 0) {
-        return errorText(`No memory with ID '${id}' exists.`);
+        return errorText(`No artifact with ID '${id}' exists.`);
       }
       if (!canAccess(rows[0], auth)) {
         return errorText("You do not have access to this resource.");
       }
 
-      await db.delete(memory).where(eq(memory.id, id));
+      await db.delete(artifact).where(eq(artifact.id, id));
 
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ deleted: true, id }, null, 2) }],

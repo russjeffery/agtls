@@ -20,6 +20,12 @@ export interface SessionContext {
   email: string;
   /** Orgs this user is a member of — a session can see resources in any of them. */
   organizationIds: string[];
+  /**
+   * The org new resources should be created under — the BetterAuth active
+   * organization when set and the user is still a member, otherwise the first
+   * (oldest) membership. Null only when the user belongs to no org.
+   */
+  activeOrganizationId: string | null;
 }
 
 /**
@@ -112,7 +118,19 @@ export async function resolveViewer(request: Request): Promise<Viewer> {
   const memberships = await db
     .select({ organizationId: member.organizationId })
     .from(member)
-    .where(eq(member.userId, session.user.id));
+    .where(eq(member.userId, session.user.id))
+    .orderBy(member.createdAt);
+
+  const organizationIds = memberships.map((m) => m.organizationId);
+
+  // Prefer the BetterAuth active org, but only if the user is still a member of
+  // it; otherwise fall back to their oldest membership so creation always lands
+  // in a real org the caller belongs to.
+  const active = session.session.activeOrganizationId ?? null;
+  const activeOrganizationId =
+    active && organizationIds.includes(active)
+      ? active
+      : organizationIds[0] ?? null;
 
   return {
     auth: null,
@@ -120,7 +138,8 @@ export async function resolveViewer(request: Request): Promise<Viewer> {
       userId: session.user.id,
       name: session.user.name,
       email: session.user.email,
-      organizationIds: memberships.map((m) => m.organizationId),
+      organizationIds,
+      activeOrganizationId,
     },
   };
 }
@@ -133,6 +152,18 @@ export async function resolveViewer(request: Request): Promise<Viewer> {
 export function viewerOrganizationIds(viewer: Viewer): string[] | null {
   if (viewer.auth) return [viewer.auth.organizationId];
   if (viewer.session) return viewer.session.organizationIds;
+  return null;
+}
+
+/**
+ * The org a newly created resource should belong to: an API key's org, or a
+ * logged-in human's active org. Null only for anonymous callers — those create
+ * public resources guarded by a claim token. This is what keeps HTML form
+ * submissions from a signed-in user from silently becoming public.
+ */
+export function viewerCreationOrganizationId(viewer: Viewer): string | null {
+  if (viewer.auth) return viewer.auth.organizationId;
+  if (viewer.session) return viewer.session.activeOrganizationId;
   return null;
 }
 
@@ -150,12 +181,4 @@ export function viewerCanAccess(
   if (viewer.session)
     return viewer.session.organizationIds.includes(resourceOrganizationId);
   return false;
-}
-
-/** The logged-in human for HTML chrome, or null. */
-export function viewerUser(
-  viewer: Viewer
-): { name: string; email: string } | null {
-  if (!viewer.session) return null;
-  return { name: viewer.session.name, email: viewer.session.email };
 }

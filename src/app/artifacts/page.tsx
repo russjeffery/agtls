@@ -1,0 +1,68 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { inArray, desc } from "drizzle-orm";
+import { db, artifact } from "@/lib/db";
+import { getPageViewer } from "@/lib/api/page-viewer";
+import { serializeArtifact } from "@/lib/api/serialize";
+import { fmtDate } from "@/lib/format";
+import { ResourceShell } from "@/components/resource/resource-shell";
+import { ResourceTable } from "@/components/resource/resource-table";
+import { ResourceForm, type FormField } from "@/components/resource/resource-form";
+
+export const metadata: Metadata = { title: "Artifacts — agtls" };
+
+const createFields: FormField[] = [
+  { name: "name", label: "Name", placeholder: "Project context", required: true },
+  { name: "content", label: "Content (markdown)", type: "textarea", placeholder: "# Notes\n…", required: true },
+];
+
+export default async function ArtifactsPage() {
+  const viewer = await getPageViewer();
+  if (!viewer) redirect("/sign-in");
+
+  const rows = viewer.organizationIds.length
+    ? await db
+        .select()
+        .from(artifact)
+        .where(inArray(artifact.organizationId, viewer.organizationIds))
+        .orderBy(desc(artifact.createdAt))
+        .limit(100)
+    : [];
+  const data = rows.map(serializeArtifact);
+
+  return (
+    <ResourceShell
+      user={{ name: viewer.user.name, email: viewer.user.email }}
+      breadcrumb={[{ label: "Artifacts", href: "/artifacts" }]}
+      title="Artifacts"
+      description="Markdown files an agent can store and recall. Each artifact is a single file of content."
+    >
+      <div className="mb-6">
+        <ResourceForm
+          collapsible
+          title="New artifact"
+          endpoint="/api/artifacts"
+          submitLabel="Create artifact"
+          fields={createFields}
+        />
+      </div>
+
+      <ResourceTable
+        columns={[
+          { key: "id", label: "ID", mono: true },
+          { key: "name", label: "Name" },
+          { key: "format", label: "Format", mono: true },
+          { key: "created", label: "Created", mono: true },
+        ]}
+        rows={data.map((a) => ({
+          id: a.id,
+          name: a.name,
+          format: a.format,
+          created: fmtDate(a.created_at),
+          href: `/artifacts/${a.id}`,
+        }))}
+        emptyMessage="No artifacts yet. Create one above."
+      />
+    </ResourceShell>
+  );
+}

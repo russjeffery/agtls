@@ -69,7 +69,7 @@ describe("POST /api/webhooks", () => {
     expect(res.status).toBe(401);
   });
 
-  it("redirects browser POSTs (303)", async () => {
+  it("returns 201 JSON regardless of Accept (no browser redirect)", async () => {
     const { POST } = await endpoints();
     const res = await POST(
       makeRequest("/api/webhooks", {
@@ -77,8 +77,10 @@ describe("POST /api/webhooks", () => {
         accept: "text/html,application/xhtml+xml",
       })
     );
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toContain("/api/webhooks/");
+    expect(res.status).toBe(201);
+    expect(res.headers.get("location")).toBeNull();
+    const body = await json<{ id: string }>(res);
+    expect(body.id).toMatch(/^wh_/);
   });
 });
 
@@ -121,15 +123,15 @@ describe("GET /api/webhooks", () => {
     expect(second.has_more).toBe(false);
   });
 
-  it("serves an HTML page to browsers", async () => {
+  it("returns JSON to browsers too (no content negotiation)", async () => {
     const { GET } = await endpoints();
     const res = await GET(
       makeRequest("/api/webhooks", { accept: "text/html,application/xhtml+xml" })
     );
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("Webhooks");
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = await json<{ object: string }>(res);
+    expect(body.object).toBe("list");
   });
 });
 

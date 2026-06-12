@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { makeRequest, json, routeParams } from "../helpers/request";
 import { seedOrganization } from "../helpers/seed";
 import { testDb } from "../helpers/db";
-import { task as taskTable, subtask as subtaskTable } from "@/lib/db/schema";
+import { task as taskTable } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 // ─── Tasks collection ────────────────────────────────────────────────────────
@@ -135,14 +135,14 @@ describe("GET /api/tasks", () => {
     expect(page1Ids.some((id) => page2Ids.includes(id))).toBe(false);
   });
 
-  it("serves HTML when Accept: text/html", async () => {
+  it("returns JSON even when Accept: text/html (no content negotiation)", async () => {
     const { GET } = await import("@/app/api/tasks/route");
     const res = await GET(makeRequest("/api/tasks", { accept: "text/html,application/xhtml+xml" }));
     expect(res.status).toBe(200);
     const ct = res.headers.get("content-type") ?? "";
-    expect(ct).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("<!DOCTYPE html");
+    expect(ct).toContain("application/json");
+    const body = await json<{ object: string }>(res);
+    expect(body.object).toBe("list");
   });
 });
 
@@ -230,15 +230,16 @@ describe("POST /api/tasks", () => {
     expect(typeof body.updated_at).toBe("number");
   });
 
-  it("redirects to task page with HTML Accept after POST", async () => {
+  it("returns 201 JSON regardless of Accept (no browser redirect)", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const res = await POST(makeRequest("/api/tasks", {
       body: { name: "HTML Post" },
       accept: "text/html,application/xhtml+xml",
     }));
-    expect(res.status).toBe(303);
-    const location = res.headers.get("location") ?? "";
-    expect(location).toMatch(/\/api\/tasks\/tsk_/);
+    expect(res.status).toBe(201);
+    expect(res.headers.get("location")).toBeNull();
+    const body = await json<{ id: string }>(res);
+    expect(body.id).toMatch(/^tsk_/);
   });
 });
 
@@ -314,11 +315,11 @@ describe("GET /api/tasks/[id]", () => {
     expect(res.status).toBe(401);
   });
 
-  it("serves HTML when Accept: text/html", async () => {
+  it("returns JSON even when Accept: text/html (no content negotiation)", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { GET } = await import("@/app/api/tasks/[id]/route");
 
-    const createRes = await POST(makeRequest("/api/tasks", { body: { name: "HTML task" } }));
+    const createRes = await POST(makeRequest("/api/tasks", { body: { name: "JSON task" } }));
     const { id } = await json<{ id: string }>(createRes);
 
     const res = await GET(
@@ -327,11 +328,10 @@ describe("GET /api/tasks/[id]", () => {
     );
     expect(res.status).toBe(200);
     const ct = res.headers.get("content-type") ?? "";
-    expect(ct).toContain("text/html");
-    const html = await res.text();
-    expect(html).toContain("<!DOCTYPE html");
-    // Resource JSON is highlighted by Shiki (github-dark-default theme).
-    expect(html).toContain('class="shiki github-dark-default"');
+    expect(ct).toContain("application/json");
+    const body = await json<{ object: string; id: string }>(res);
+    expect(body.object).toBe("task");
+    expect(body.id).toBe(id);
   });
 });
 
@@ -427,8 +427,10 @@ describe("PATCH /api/tasks/[id]", () => {
       }),
       routeParams({ id })
     );
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toContain(`/api/tasks/${id}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    const body = await json<{ name: string }>(res);
+    expect(body.name).toBe("New Name");
   });
 
   it("persists changes in DB", async () => {
@@ -498,7 +500,7 @@ describe("DELETE /api/tasks/[id]", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("redirects after DELETE when Accept: text/html", async () => {
+  it("returns 204 on DELETE even when Accept: text/html", async () => {
     const { POST } = await import("@/app/api/tasks/route");
     const { DELETE } = await import("@/app/api/tasks/[id]/route");
     const { key } = await seedOrganization();
@@ -514,8 +516,8 @@ describe("DELETE /api/tasks/[id]", () => {
       }),
       routeParams({ id })
     );
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toContain("/api/tasks");
+    expect(res.status).toBe(204);
+    expect(res.headers.get("location")).toBeNull();
   });
 
   it("deletes a public task without auth", async () => {
@@ -533,187 +535,161 @@ describe("DELETE /api/tasks/[id]", () => {
   });
 });
 
-// ─── Tasks nested subtasks ───────────────────────────────────────────────────
+// ─── Task fields: priority, due_at, labels ───────────────────────────────────
 
-describe("GET /api/tasks/[id]/subtasks", () => {
-  it("returns empty subtask list for a new task", async () => {
+describe("task priority, due_at, and labels", () => {
+  it("defaults priority=low, due_at=null, labels=[]", async () => {
     const { POST } = await import("@/app/api/tasks/route");
-    const { GET } = await import("@/app/api/tasks/[id]/subtasks/route");
+    const res = await POST(makeRequest("/api/tasks", { body: { name: "Defaults" } }));
+    expect(res.status).toBe(201);
+    const body = await json<{ priority: string; due_at: unknown; labels: unknown[] }>(res);
+    expect(body.priority).toBe("low");
+    expect(body.due_at).toBeNull();
+    expect(body.labels).toEqual([]);
+  });
+
+  it("accepts priority, due_at, and labels on create", async () => {
+    const { POST } = await import("@/app/api/tasks/route");
+    const dueAt = Math.floor(Date.now() / 1000) + 3600;
+    const res = await POST(
+      makeRequest("/api/tasks", {
+        body: { name: "Full", priority: "critical", due_at: dueAt, labels: ["urgent", "infra"] },
+      })
+    );
+    expect(res.status).toBe(201);
+    const body = await json<{ priority: string; due_at: number; labels: string[] }>(res);
+    expect(body.priority).toBe("critical");
+    expect(body.due_at).toBe(dueAt);
+    expect(body.labels).toEqual(["urgent", "infra"]);
+  });
+
+  it("rejects an unknown priority", async () => {
+    const { POST } = await import("@/app/api/tasks/route");
+    const res = await POST(
+      makeRequest("/api/tasks", { body: { name: "Bad", priority: "urgent" } })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-string labels", async () => {
+    const { POST } = await import("@/app/api/tasks/route");
+    const res = await POST(
+      makeRequest("/api/tasks", { body: { name: "Bad", labels: [42] } })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("updates priority, due_at, and labels via PATCH", async () => {
+    const { POST } = await import("@/app/api/tasks/route");
+    const { PATCH } = await import("@/app/api/tasks/[id]/route");
     const { key } = await seedOrganization();
 
     const createRes = await POST(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
     const { id } = await json<{ id: string }>(createRes);
 
-    const res = await GET(makeRequest(`/api/tasks/${id}/subtasks`, { token: key }), routeParams({ id }));
-    expect(res.status).toBe(200);
-    const body = await json<{ object: string; data: unknown[] }>(res);
-    expect(body.object).toBe("list");
-    expect(body.data).toHaveLength(0);
-  });
-
-  it("returns 404 for non-existent parent task", async () => {
-    const { GET } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const res = await GET(makeRequest("/api/tasks/tsk_none/subtasks"), routeParams({ id: "tsk_none" }));
-    expect(res.status).toBe(404);
-  });
-
-  it("returns 403 for owned task accessed by wrong organization", async () => {
-    const { POST } = await import("@/app/api/tasks/route");
-    const { GET } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const a = await seedOrganization();
-    const b = await seedOrganization();
-
-    const createRes = await POST(makeRequest("/api/tasks", { body: { name: "A task" }, token: a.key }));
-    const { id } = await json<{ id: string }>(createRes);
-
-    const res = await GET(makeRequest(`/api/tasks/${id}/subtasks`, { token: b.key }), routeParams({ id }));
-    expect(res.status).toBe(403);
-  });
-
-  it("returns 401 for invalid token", async () => {
-    const { GET } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const res = await GET(makeRequest("/api/tasks/tsk_any/subtasks", { token: "bad" }), routeParams({ id: "tsk_any" }));
-    expect(res.status).toBe(401);
-  });
-
-  it("lists subtasks created under a task", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { GET: subtasksGet, POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedOrganization();
-
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Parent" }, token: key }));
-    const { id: taskId } = await json<{ id: string }>(taskRes);
-
-    await subtaskPost(
-      makeRequest(`/api/tasks/${taskId}/subtasks`, { body: { title: "Sub 1" }, token: key }),
-      routeParams({ id: taskId })
-    );
-    await subtaskPost(
-      makeRequest(`/api/tasks/${taskId}/subtasks`, { body: { title: "Sub 2" }, token: key }),
-      routeParams({ id: taskId })
-    );
-
-    const res = await subtasksGet(makeRequest(`/api/tasks/${taskId}/subtasks`, { token: key }), routeParams({ id: taskId }));
-    expect(res.status).toBe(200);
-    const body = await json<{ data: { title: string }[] }>(res);
-    expect(body.data).toHaveLength(2);
-    const titles = body.data.map((s) => s.title);
-    expect(titles).toContain("Sub 1");
-    expect(titles).toContain("Sub 2");
-  });
-
-  it("serves HTML for subtask list", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { GET: subtasksGet } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedOrganization();
-
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
-    const { id } = await json<{ id: string }>(taskRes);
-
-    const res = await subtasksGet(
-      makeRequest(`/api/tasks/${id}/subtasks`, { accept: "text/html,application/xhtml+xml", token: key }),
-      routeParams({ id })
-    );
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type") ?? "").toContain("text/html");
-  });
-});
-
-describe("POST /api/tasks/[id]/subtasks", () => {
-  it("creates a subtask under a task", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key, organizationId } = await seedOrganization();
-
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Parent" }, token: key }));
-    const { id: taskId } = await json<{ id: string }>(taskRes);
-
-    const res = await subtaskPost(
-      makeRequest(`/api/tasks/${taskId}/subtasks`, { body: { title: "Sub task" }, token: key }),
-      routeParams({ id: taskId })
-    );
-    expect(res.status).toBe(201);
-    const body = await json<{ id: string; object: string; task_id: string; organization_id: string }>(res);
-    expect(body.id).toMatch(/^sub_/);
-    expect(body.object).toBe("subtask");
-    expect(body.task_id).toBe(taskId);
-    expect(body.organization_id).toBe(organizationId);
-  });
-
-  it("returns 404 for non-existent parent task", async () => {
-    const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const res = await subtaskPost(
-      makeRequest("/api/tasks/tsk_none/subtasks", { body: { title: "Sub" } }),
-      routeParams({ id: "tsk_none" })
-    );
-    expect(res.status).toBe(404);
-  });
-
-  it("returns 400 when title is missing", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedOrganization();
-
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
-    const { id } = await json<{ id: string }>(taskRes);
-
-    const res = await subtaskPost(
-      makeRequest(`/api/tasks/${id}/subtasks`, { body: {}, token: key }),
-      routeParams({ id })
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 403 for wrong organization creating subtask under owned task", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const a = await seedOrganization();
-    const b = await seedOrganization();
-
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "A task" }, token: a.key }));
-    const { id } = await json<{ id: string }>(taskRes);
-
-    const res = await subtaskPost(
-      makeRequest(`/api/tasks/${id}/subtasks`, { body: { title: "Inject" }, token: b.key }),
-      routeParams({ id })
-    );
-    expect(res.status).toBe(403);
-  });
-
-  it("redirects to subtask page after POST with text/html", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
-    const { key } = await seedOrganization();
-
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
-    const { id } = await json<{ id: string }>(taskRes);
-
-    const res = await subtaskPost(
-      makeRequest(`/api/tasks/${id}/subtasks`, {
-        body: { title: "HTML sub" },
+    const dueAt = Math.floor(Date.now() / 1000) + 86400;
+    const res = await PATCH(
+      makeRequest(`/api/tasks/${id}`, {
+        method: "PATCH",
+        body: { priority: "high", due_at: dueAt, labels: ["sprint-1"] },
         token: key,
-        accept: "text/html,application/xhtml+xml",
       }),
       routeParams({ id })
     );
-    expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toMatch(/\/api\/subtasks\/sub_/);
+    expect(res.status).toBe(200);
+    const body = await json<{ priority: string; due_at: number; labels: string[] }>(res);
+    expect(body.priority).toBe("high");
+    expect(body.due_at).toBe(dueAt);
+    expect(body.labels).toEqual(["sprint-1"]);
   });
 
-  it("creates subtask with default status=todo and priority=medium", async () => {
-    const { POST: taskPost } = await import("@/app/api/tasks/route");
-    const { POST: subtaskPost } = await import("@/app/api/tasks/[id]/subtasks/route");
+  it("clears due_at and labels with null via PATCH", async () => {
+    const { POST } = await import("@/app/api/tasks/route");
+    const { PATCH } = await import("@/app/api/tasks/[id]/route");
     const { key } = await seedOrganization();
 
-    const taskRes = await taskPost(makeRequest("/api/tasks", { body: { name: "Task" }, token: key }));
-    const { id: taskId } = await json<{ id: string }>(taskRes);
-
-    const res = await subtaskPost(
-      makeRequest(`/api/tasks/${taskId}/subtasks`, { body: { title: "New" }, token: key }),
-      routeParams({ id: taskId })
+    const createRes = await POST(
+      makeRequest("/api/tasks", {
+        body: { name: "Task", due_at: Math.floor(Date.now() / 1000), labels: ["x"] },
+        token: key,
+      })
     );
-    const body = await json<{ status: string; priority: string }>(res);
-    expect(body.status).toBe("todo");
-    expect(body.priority).toBe("medium");
+    const { id } = await json<{ id: string }>(createRes);
+
+    const res = await PATCH(
+      makeRequest(`/api/tasks/${id}`, {
+        method: "PATCH",
+        body: { due_at: null, labels: null },
+        token: key,
+      }),
+      routeParams({ id })
+    );
+    expect(res.status).toBe(200);
+    const body = await json<{ due_at: unknown; labels: unknown[] }>(res);
+    expect(body.due_at).toBeNull();
+    expect(body.labels).toEqual([]);
+  });
+});
+
+describe("GET /api/tasks?label=", () => {
+  it("filters tasks by label", async () => {
+    const { POST, GET } = await import("@/app/api/tasks/route");
+    const { key } = await seedOrganization();
+
+    await POST(makeRequest("/api/tasks", { body: { name: "Tagged", labels: ["infra", "q3"] }, token: key }));
+    await POST(makeRequest("/api/tasks", { body: { name: "Other", labels: ["docs"] }, token: key }));
+    await POST(makeRequest("/api/tasks", { body: { name: "Unlabeled" }, token: key }));
+
+    const res = await GET(makeRequest("/api/tasks?label=infra", { token: key }));
+    expect(res.status).toBe(200);
+    const body = await json<{ data: { name: string }[] }>(res);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].name).toBe("Tagged");
+  });
+
+  it("requires every repeated label to match", async () => {
+    const { POST, GET } = await import("@/app/api/tasks/route");
+    const { key } = await seedOrganization();
+
+    await POST(makeRequest("/api/tasks", { body: { name: "Both", labels: ["a", "b"] }, token: key }));
+    await POST(makeRequest("/api/tasks", { body: { name: "Only A", labels: ["a"] }, token: key }));
+
+    const res = await GET(makeRequest("/api/tasks?label=a&label=b", { token: key }));
+    const body = await json<{ data: { name: string }[] }>(res);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].name).toBe("Both");
+  });
+
+  it("returns empty list when no task carries the label", async () => {
+    const { POST, GET } = await import("@/app/api/tasks/route");
+    const { key } = await seedOrganization();
+
+    await POST(makeRequest("/api/tasks", { body: { name: "Task", labels: ["x"] }, token: key }));
+
+    const res = await GET(makeRequest("/api/tasks?label=missing", { token: key }));
+    const body = await json<{ data: unknown[] }>(res);
+    expect(body.data).toHaveLength(0);
+  });
+
+  it("label filter combines with pagination", async () => {
+    const { POST, GET } = await import("@/app/api/tasks/route");
+    const { key } = await seedOrganization();
+
+    for (let i = 0; i < 3; i++) {
+      await POST(makeRequest("/api/tasks", { body: { name: `Labeled ${i}`, labels: ["page"] }, token: key }));
+    }
+    await POST(makeRequest("/api/tasks", { body: { name: "Noise" }, token: key }));
+
+    const page1 = await GET(makeRequest("/api/tasks?label=page&limit=2", { token: key }));
+    const body1 = await json<{ data: { id: string }[]; has_more: boolean; next_cursor: string }>(page1);
+    expect(body1.data).toHaveLength(2);
+    expect(body1.has_more).toBe(true);
+
+    const page2 = await GET(
+      makeRequest(`/api/tasks?label=page&limit=2&after=${body1.next_cursor}`, { token: key })
+    );
+    const body2 = await json<{ data: { id: string }[]; has_more: boolean }>(page2);
+    expect(body2.data).toHaveLength(1);
+    expect(body2.has_more).toBe(false);
   });
 });

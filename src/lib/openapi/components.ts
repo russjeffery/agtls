@@ -25,13 +25,26 @@ const organizationId: JSONSchema = {
 
 const Task: JSONSchema = {
   type: "object",
-  description: "A task — a container for subtasks.",
+  description:
+    "A task — a unit of work with a priority, an optional due date, and labels for flexible grouping.",
   properties: {
     id: idField("tsk", "task"),
     object: { type: "string", const: "task" },
     organization_id: organizationId,
     name: { type: "string" },
     description: { type: ["string", "null"] },
+    priority: {
+      type: "string",
+      enum: ["low", "medium", "high", "critical"],
+      description: "Task priority. Defaults to `low`.",
+    },
+    due_at: unixTimestamp("When the task is due."),
+    labels: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Labels attached to the task. Use ?label= on the list endpoint to filter. Defaults to [].",
+    },
     created_at: unixTimestamp("When the task was created."),
     updated_at: unixTimestamp("When the task was last updated."),
   },
@@ -41,50 +54,9 @@ const Task: JSONSchema = {
     "organization_id",
     "name",
     "description",
-    "created_at",
-    "updated_at",
-  ],
-};
-
-const Subtask: JSONSchema = {
-  type: "object",
-  description: "A subtask — a unit of work, optionally attached to a task.",
-  properties: {
-    id: idField("sub", "subtask"),
-    object: { type: "string", const: "subtask" },
-    organization_id: organizationId,
-    task_id: {
-      type: ["string", "null"],
-      description: "ID of the parent task (tsk_…), or null if unattached.",
-    },
-    title: { type: "string" },
-    description: { type: ["string", "null"] },
-    status: { type: "string", enum: ["todo", "in_progress", "done", "cancelled"] },
-    priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
-    assignee: { type: ["string", "null"] },
-    metadata: {
-      type: "object",
-      additionalProperties: true,
-      description: "Arbitrary key/value metadata. Defaults to {}.",
-    },
-    due_at: unixTimestamp("When the subtask is due."),
-    completed_at: unixTimestamp("When the subtask was completed."),
-    created_at: unixTimestamp("When the subtask was created."),
-    updated_at: unixTimestamp("When the subtask was last updated."),
-  },
-  required: [
-    "id",
-    "object",
-    "organization_id",
-    "task_id",
-    "title",
-    "description",
-    "status",
     "priority",
-    "assignee",
-    "metadata",
     "due_at",
-    "completed_at",
+    "labels",
     "created_at",
     "updated_at",
   ],
@@ -164,22 +136,28 @@ const WebhookEvent: JSONSchema = {
   ],
 };
 
-const Memory: JSONSchema = {
+const Artifact: JSONSchema = {
   type: "object",
-  description: "A memory — a file of content an agent can store and recall.",
+  description: "An artifact — a file of content an agent can store and recall.",
   properties: {
-    id: idField("memo", "memory"),
-    object: { type: "string", const: "memory" },
+    id: idField("art", "artifact"),
+    object: { type: "string", const: "artifact" },
     organization_id: organizationId,
     name: { type: "string" },
     content: { type: "string", description: "The stored content." },
     format: {
       type: "string",
-      enum: ["markdown"],
-      description: "Content format. Only `markdown` is accepted today.",
+      enum: ["markdown", "html"],
+      description:
+        "Content format. Determines the content type the raw endpoint serves.",
     },
-    created_at: unixTimestamp("When the memory was created."),
-    updated_at: unixTimestamp("When the memory was last updated."),
+    raw_url: {
+      type: "string",
+      description:
+        "Path serving the raw content with the format's content type (`text/html` for html, `text/markdown` for markdown).",
+    },
+    created_at: unixTimestamp("When the artifact was created."),
+    updated_at: unixTimestamp("When the artifact was last updated."),
   },
   required: [
     "id",
@@ -188,6 +166,7 @@ const Memory: JSONSchema = {
     "name",
     "content",
     "format",
+    "raw_url",
     "created_at",
     "updated_at",
   ],
@@ -328,21 +307,18 @@ const Error: JSONSchema = {
 
 export const schemas: Record<string, JSONSchema> = {
   Task,
-  Subtask,
   WebhookEndpoint,
   WebhookEvent,
-  Memory,
+  Artifact,
   ScheduledMessage,
   TaskList: listOf("#/components/schemas/Task", "task"),
-  SubtaskList: listOf("#/components/schemas/Subtask", "subtask"),
   WebhookEndpointList: listOf("#/components/schemas/WebhookEndpoint", "webhook endpoint"),
   WebhookEventList: listOf("#/components/schemas/WebhookEvent", "webhook event"),
-  MemoryList: listOf("#/components/schemas/Memory", "memory"),
+  ArtifactList: listOf("#/components/schemas/Artifact", "artifact"),
   ScheduledMessageList: listOf("#/components/schemas/ScheduledMessage", "scheduled message"),
   TaskCreateResponse: withClaim("#/components/schemas/Task"),
-  SubtaskCreateResponse: withClaim("#/components/schemas/Subtask"),
   WebhookEndpointCreateResponse: withClaim("#/components/schemas/WebhookEndpoint"),
-  MemoryCreateResponse: withClaim("#/components/schemas/Memory"),
+  ArtifactCreateResponse: withClaim("#/components/schemas/Artifact"),
   ScheduledMessageCreateResponse: withClaim("#/components/schemas/ScheduledMessage"),
   Error,
 };
@@ -359,6 +335,14 @@ export const parameters: Record<string, JSONSchema> = {
     name: "after",
     in: "query",
     description: "Cursor for pagination — the ID of the last item from the previous page.",
+    required: false,
+    schema: { type: "string" },
+  },
+  label: {
+    name: "label",
+    in: "query",
+    description:
+      "Only return tasks carrying this label. May be repeated; a task must carry every requested label to match.",
     required: false,
     schema: { type: "string" },
   },

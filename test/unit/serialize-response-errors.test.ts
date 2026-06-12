@@ -1,13 +1,12 @@
 /**
  * Unit tests for:
- *   src/lib/api/serialize.ts  — serializeTask, serializeSubtask, etc.
+ *   src/lib/api/serialize.ts  — serializeTask, serializeWebhookEndpoint, etc.
  *   src/lib/api/response.ts   — toUnix, listResponse, errorResponse, etc.
  *   src/lib/api/errors.ts     — error builder functions
  */
 import { describe, it, expect } from "vitest";
 import {
   serializeTask,
-  serializeSubtask,
   serializeWebhookEndpoint,
   serializeWebhookEvent,
   serializeOrganization,
@@ -58,6 +57,9 @@ describe("serializeTask", () => {
     organizationId: "org_xyz",
     name: "My Task",
     description: "do the thing",
+    priority: "low" as const,
+    dueAt: null,
+    labels: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -71,65 +73,38 @@ describe("serializeTask", () => {
     expect(s).toHaveProperty("organization_id");
     expect(s).toHaveProperty("created_at");
     expect(s).toHaveProperty("updated_at");
+    expect(s).toHaveProperty("due_at");
     expect(s).not.toHaveProperty("organizationId");
     expect(s).not.toHaveProperty("createdAt");
+    expect(s).not.toHaveProperty("dueAt");
   });
 
   it("passes through organization_id", () => {
     expect(serializeTask(row).organization_id).toBe("org_xyz");
   });
 
+  it("passes through priority", () => {
+    expect(serializeTask(row).priority).toBe("low");
+    expect(serializeTask({ ...row, priority: "critical" }).priority).toBe("critical");
+  });
+
+  it("defaults labels to [] when null", () => {
+    expect(serializeTask(row).labels).toEqual([]);
+  });
+
+  it("preserves labels when present", () => {
+    expect(serializeTask({ ...row, labels: ["a", "b"] }).labels).toEqual(["a", "b"]);
+  });
+
+  it("converts dueAt to Unix or null", () => {
+    expect(serializeTask(row).due_at).toBeNull();
+    expect(serializeTask({ ...row, dueAt: now }).due_at).toBe(toUnix(now));
+  });
+
   it("converts dates to Unix timestamps", () => {
     const s = serializeTask(row);
     expect(s.created_at).toBe(toUnix(now));
     expect(s.updated_at).toBe(toUnix(now));
-  });
-});
-
-// ─── serializeSubtask ──────────────────────────────────────────────────────
-
-describe("serializeSubtask", () => {
-  const now = new Date("2024-06-01T12:00:00Z");
-  const baseRow = {
-    id: "sub_abc",
-    organizationId: "org_xyz",
-    taskId: "tsk_abc",
-    title: "Subtask title",
-    description: null,
-    status: "todo" as const,
-    priority: "medium" as const,
-    assignee: null,
-    metadata: null,
-    dueAt: null,
-    completedAt: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  it("has object field === 'subtask'", () => {
-    expect(serializeSubtask(baseRow).object).toBe("subtask");
-  });
-
-  it("defaults metadata to {} when null", () => {
-    expect(serializeSubtask(baseRow).metadata).toEqual({});
-  });
-
-  it("preserves metadata when present", () => {
-    const row = { ...baseRow, metadata: { foo: "bar" } };
-    expect(serializeSubtask(row).metadata).toEqual({ foo: "bar" });
-  });
-
-  it("converts dueAt and completedAt to Unix or null", () => {
-    const s = serializeSubtask(baseRow);
-    expect(s.due_at).toBeNull();
-    expect(s.completed_at).toBeNull();
-  });
-
-  it("uses snake_case keys", () => {
-    const s = serializeSubtask(baseRow);
-    expect(s).toHaveProperty("task_id");
-    expect(s).toHaveProperty("organization_id");
-    expect(s).not.toHaveProperty("taskId");
   });
 });
 

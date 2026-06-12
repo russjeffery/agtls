@@ -209,7 +209,18 @@ export const agentAuditEvent = pgTable("agent_audit_event", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// ─── Tasks & Subtasks ────────────────────────────────────────────────────────
+// ─── Tasks ───────────────────────────────────────────────────────────────────
+//
+// Tasks are a flat collection — there is no parent/child hierarchy. Grouping
+// and cross-cutting organization happen through `labels`, which the list API
+// can filter on.
+
+export const taskPriority = pgEnum("task_priority", [
+  "low",
+  "medium",
+  "high",
+  "critical",
+]);
 
 export const task = pgTable("task", {
   id: text("id").primaryKey(), // nanoid, prefix: tsk_
@@ -219,46 +230,12 @@ export const task = pgTable("task", {
   }),
   name: text("name").notNull(),
   description: text("description"),
+  priority: taskPriority("priority").notNull().default("low"),
+  dueAt: timestamp("due_at"),
+  labels: text("labels").array(),
   // SHA-256 of the claim token issued on public creation; lets a later
   // authenticated caller take ownership via POST /api/claim/{id}. Cleared
   // once claimed. Null for resources created with auth.
-  claimTokenHash: text("claim_token_hash"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export const subtaskStatus = pgEnum("subtask_status", [
-  "todo",
-  "in_progress",
-  "done",
-  "cancelled",
-]);
-
-export const subtaskPriority = pgEnum("subtask_priority", [
-  "low",
-  "medium",
-  "high",
-  "urgent",
-]);
-
-export const subtask = pgTable("subtask", {
-  id: text("id").primaryKey(), // nanoid, prefix: sub_
-  // null = public / anonymous resource
-  organizationId: text("organization_id").references(() => organization.id, {
-    onDelete: "cascade",
-  }),
-  taskId: text("task_id").references(() => task.id, {
-    onDelete: "cascade",
-  }),
-  title: text("title").notNull(),
-  description: text("description"),
-  status: subtaskStatus("status").notNull().default("todo"),
-  priority: subtaskPriority("priority").notNull().default("medium"),
-  assignee: text("assignee"),
-  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
-  dueAt: timestamp("due_at"),
-  completedAt: timestamp("completed_at"),
-  // See task.claimTokenHash.
   claimTokenHash: text("claim_token_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -302,23 +279,24 @@ export const webhookEvent = pgTable("webhook_event", {
   receivedAt: timestamp("received_at").notNull().defaultNow(),
 });
 
-// ─── Agent Memory ─────────────────────────────────────────────────────────────
+// ─── Agent Artifacts ──────────────────────────────────────────────────────────
 //
-// A simple store for an agent to persist a file of content (a memory). Today the
-// only accepted format is markdown; `format` exists so other formats (plain text,
-// JSON, …) can be added later without reshaping the resource.
+// A simple store for an agent to persist a file of content (an artifact).
+// Accepted formats are markdown and html; more (plain text, JSON, …) can be
+// added later without reshaping the resource. GET /api/artifacts/{id}/raw
+// serves the content with the format's content type.
 
-export const memoryFormat = pgEnum("memory_format", ["markdown"]);
+export const artifactFormat = pgEnum("artifact_format", ["markdown", "html"]);
 
-export const memory = pgTable("memory", {
-  id: text("id").primaryKey(), // nanoid, prefix: memo_
+export const artifact = pgTable("artifact", {
+  id: text("id").primaryKey(), // nanoid, prefix: art_
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
   name: text("name").notNull(),
   content: text("content").notNull(),
-  format: memoryFormat("format").notNull().default("markdown"),
+  format: artifactFormat("format").notNull().default("markdown"),
   // See task.claimTokenHash.
   claimTokenHash: text("claim_token_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

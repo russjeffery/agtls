@@ -3,7 +3,6 @@ import { resolveAuth } from "@/lib/api/middleware";
 import { ok, errorResponse } from "@/lib/api/response";
 import { errors, type ApiError } from "@/lib/api/errors";
 import { claimResource, ClaimError } from "@/lib/api/claim";
-import { wantsHtml } from "@/lib/api/accepts";
 import { claimSchema } from "@/lib/api/schemas";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -73,10 +72,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   } catch (e: unknown) {
     if (e instanceof ClaimError) return claimErrorToResponse(e);
     throw e;
-  }
-
-  if (wantsHtml(request)) {
-    return Response.redirect(new URL(result.path, request.url).toString(), 303);
   }
 
   return ok(result.data);

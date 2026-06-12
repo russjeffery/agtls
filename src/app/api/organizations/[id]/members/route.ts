@@ -4,8 +4,6 @@ import { getMembership } from "@/lib/orgs/service";
 import { listOrgMembers } from "@/lib/orgs/queries";
 import { errorResponse, listResponse, toUnix } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
 import { headers } from "next/headers";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -17,9 +15,6 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   const session = await betterAuth.api.getSession({ headers: await headers() });
   if (!session) {
-    if (wantsHtml(request)) {
-      return Response.redirect(new URL("/sign-in", request.url).toString(), 302);
-    }
     return errorResponse(errors.unauthorized(), 401);
   }
 
@@ -50,39 +45,6 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       : null,
     created_at: toUnix(m.joinedAt),
   }));
-
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: "Members",
-        user: { name: session.user.name, email: session.user.email },
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "organizations", href: "/api/organizations" },
-          { label: id, href: `/api/organizations/${id}` },
-          { label: "members" },
-        ],
-        description:
-          "Members of this organization. Humans and agents alike — every member's credentials reach the same resources.",
-        list: {
-          items: data as unknown as Record<string, unknown>[],
-          columns: [
-            { key: "name", label: "Name" },
-            { key: "email", label: "Email", mono: true },
-            { key: "role", label: "Role", badge: { owner: "#34d399", admin: "#60a5fa", member: "#a1a1aa" } },
-            { key: "is_agent", label: "Agent" },
-            { key: "created_at", label: "Joined" },
-          ],
-          hasMore: false,
-          nextCursor: null,
-        },
-        apiRef: [
-          { method: "GET", path: `/api/organizations/${id}/members`, description: "List members — humans and agents. Requires browser session." },
-        ],
-      },
-      request
-    );
-  }
 
   return listResponse(data, false, null, data.length);
 }

@@ -2,12 +2,10 @@ import { z } from "zod";
 import {
   taskCreateSchema,
   taskPatchSchema,
-  subtaskCreateSchema,
-  subtaskPatchSchema,
   webhookCreateSchema,
   webhookPatchSchema,
-  memoryCreateSchema,
-  memoryPatchSchema,
+  artifactCreateSchema,
+  artifactPatchSchema,
   messageCreateSchema,
   messagePatchSchema,
   claimSchema,
@@ -63,8 +61,8 @@ export const paths: Record<string, JSONSchema> = {
       tags: ["Tasks"],
       summary: "List tasks",
       description:
-        "Lists tasks scoped to the caller's organizations. Anonymous callers receive an empty list — public tasks remain reachable by ID but are never enumerable.",
-      parameters: listParams,
+        "Lists tasks scoped to the caller's organizations, optionally filtered by `label`. Anonymous callers receive an empty list — public tasks remain reachable by ID but are never enumerable.",
+      parameters: [...listParams, { $ref: "#/components/parameters/label" }],
       security: [{}, { bearerAuth: [] }],
       responses: {
         "200": jsonResponse("A list of tasks.", "#/components/schemas/TaskList"),
@@ -118,110 +116,6 @@ export const paths: Record<string, JSONSchema> = {
       security: [{}, { bearerAuth: [] }],
       responses: {
         "204": { description: "The task was deleted." },
-        "401": errorRefs["401"],
-        "403": errorRefs["403"],
-        "404": errorRefs["404"],
-      },
-    },
-  },
-
-  "/api/tasks/{id}/subtasks": {
-    parameters: [idParam("task", "tsk")],
-    get: {
-      tags: ["Subtasks"],
-      summary: "List a task's subtasks",
-      parameters: listParams,
-      security: [{}, { bearerAuth: [] }],
-      responses: {
-        "200": jsonResponse("A list of subtasks.", "#/components/schemas/SubtaskList"),
-        "401": errorRefs["401"],
-        "403": errorRefs["403"],
-        "404": errorRefs["404"],
-      },
-    },
-    post: {
-      tags: ["Subtasks"],
-      summary: "Create a subtask under a task",
-      description:
-        "Creates a subtask attached to the given task. The path task ID takes precedence over any `task_id` in the body.",
-      security: [{}, { bearerAuth: [] }],
-      requestBody: jsonBody(subtaskCreateSchema),
-      responses: {
-        "201": jsonResponse(
-          "The created subtask.",
-          "#/components/schemas/SubtaskCreateResponse"
-        ),
-        "400": errorRefs["400"],
-        "401": errorRefs["401"],
-        "403": errorRefs["403"],
-        "404": errorRefs["404"],
-      },
-    },
-  },
-
-  "/api/subtasks": {
-    get: {
-      tags: ["Subtasks"],
-      summary: "List subtasks",
-      description:
-        "Lists subtasks scoped to the caller's organizations. Anonymous callers receive an empty list.",
-      parameters: listParams,
-      security: [{}, { bearerAuth: [] }],
-      responses: {
-        "200": jsonResponse("A list of subtasks.", "#/components/schemas/SubtaskList"),
-        "401": errorRefs["401"],
-      },
-    },
-    post: {
-      tags: ["Subtasks"],
-      summary: "Create a subtask",
-      description:
-        "Creates a subtask, optionally attached to a task via `task_id`. Without an API key the response includes a one-time `claim_token`.",
-      security: [{}, { bearerAuth: [] }],
-      requestBody: jsonBody(subtaskCreateSchema),
-      responses: {
-        "201": jsonResponse(
-          "The created subtask.",
-          "#/components/schemas/SubtaskCreateResponse"
-        ),
-        "400": errorRefs["400"],
-        "401": errorRefs["401"],
-      },
-    },
-  },
-
-  "/api/subtasks/{id}": {
-    parameters: [idParam("subtask", "sub")],
-    get: {
-      tags: ["Subtasks"],
-      summary: "Get a subtask",
-      security: [{}, { bearerAuth: [] }],
-      responses: {
-        "200": jsonResponse("The subtask.", "#/components/schemas/Subtask"),
-        "401": errorRefs["401"],
-        "403": errorRefs["403"],
-        "404": errorRefs["404"],
-      },
-    },
-    patch: {
-      tags: ["Subtasks"],
-      summary: "Update a subtask",
-      security: [{}, { bearerAuth: [] }],
-      requestBody: jsonBody(subtaskPatchSchema),
-      responses: {
-        "200": jsonResponse("The updated subtask.", "#/components/schemas/Subtask"),
-        "400": errorRefs["400"],
-        "401": errorRefs["401"],
-        "403": errorRefs["403"],
-        "404": errorRefs["404"],
-      },
-    },
-    delete: {
-      tags: ["Subtasks"],
-      summary: "Delete a subtask",
-      security: [{}, { bearerAuth: [] }],
-      responses: {
-        "204": { description: "The subtask was deleted." },
         "401": errorRefs["401"],
         "403": errorRefs["403"],
         "404": errorRefs["404"],
@@ -371,54 +265,54 @@ export const paths: Record<string, JSONSchema> = {
     },
   },
 
-  "/api/memories": {
+  "/api/artifacts": {
     get: {
-      tags: ["Memory"],
-      summary: "List memories",
+      tags: ["Artifacts"],
+      summary: "List artifacts",
       description:
-        "Lists memories scoped to the caller's organizations. Anonymous callers receive an empty list — public memories remain reachable by ID but are never enumerable.",
+        "Lists artifacts scoped to the caller's organizations. Anonymous callers receive an empty list — public artifacts remain reachable by ID but are never enumerable.",
       parameters: listParams,
       security: [{}, { bearerAuth: [] }],
       responses: {
-        "200": jsonResponse("A list of memories.", "#/components/schemas/MemoryList"),
+        "200": jsonResponse("A list of artifacts.", "#/components/schemas/ArtifactList"),
         "401": errorRefs["401"],
       },
     },
     post: {
-      tags: ["Memory"],
-      summary: "Create a memory",
+      tags: ["Artifacts"],
+      summary: "Create an artifact",
       description:
-        "Creates a memory (markdown content). With an API key it is owned by the key's organization; without one it is created public and the response includes a one-time `claim_token`.",
+        "Creates an artifact (markdown or html content). With an API key it is owned by the key's organization; without one it is created public and the response includes a one-time `claim_token`.",
       security: [{}, { bearerAuth: [] }],
-      requestBody: jsonBody(memoryCreateSchema),
+      requestBody: jsonBody(artifactCreateSchema),
       responses: {
-        "201": jsonResponse("The created memory.", "#/components/schemas/MemoryCreateResponse"),
+        "201": jsonResponse("The created artifact.", "#/components/schemas/ArtifactCreateResponse"),
         "400": errorRefs["400"],
         "401": errorRefs["401"],
       },
     },
   },
 
-  "/api/memories/{id}": {
-    parameters: [idParam("memory", "memo")],
+  "/api/artifacts/{id}": {
+    parameters: [idParam("artifact", "art")],
     get: {
-      tags: ["Memory"],
-      summary: "Get a memory",
+      tags: ["Artifacts"],
+      summary: "Get an artifact",
       security: [{}, { bearerAuth: [] }],
       responses: {
-        "200": jsonResponse("The memory.", "#/components/schemas/Memory"),
+        "200": jsonResponse("The artifact.", "#/components/schemas/Artifact"),
         "401": errorRefs["401"],
         "403": errorRefs["403"],
         "404": errorRefs["404"],
       },
     },
     patch: {
-      tags: ["Memory"],
-      summary: "Update a memory",
+      tags: ["Artifacts"],
+      summary: "Update an artifact",
       security: [{}, { bearerAuth: [] }],
-      requestBody: jsonBody(memoryPatchSchema),
+      requestBody: jsonBody(artifactPatchSchema),
       responses: {
-        "200": jsonResponse("The updated memory.", "#/components/schemas/Memory"),
+        "200": jsonResponse("The updated artifact.", "#/components/schemas/Artifact"),
         "400": errorRefs["400"],
         "401": errorRefs["401"],
         "403": errorRefs["403"],
@@ -426,11 +320,34 @@ export const paths: Record<string, JSONSchema> = {
       },
     },
     delete: {
-      tags: ["Memory"],
-      summary: "Delete a memory",
+      tags: ["Artifacts"],
+      summary: "Delete an artifact",
       security: [{}, { bearerAuth: [] }],
       responses: {
-        "204": { description: "The memory was deleted." },
+        "204": { description: "The artifact was deleted." },
+        "401": errorRefs["401"],
+        "403": errorRefs["403"],
+        "404": errorRefs["404"],
+      },
+    },
+  },
+
+  "/api/artifacts/{id}/raw": {
+    parameters: [idParam("artifact", "art")],
+    get: {
+      tags: ["Artifacts"],
+      summary: "Get an artifact's raw content",
+      description:
+        "Serves the artifact content directly with the content type matching its format — `text/html` for html artifacts, `text/markdown` for markdown. Useful as a shareable URL that renders in a browser.",
+      security: [{}, { bearerAuth: [] }],
+      responses: {
+        "200": {
+          description: "The raw artifact content.",
+          content: {
+            "text/html": { schema: { type: "string" } },
+            "text/markdown": { schema: { type: "string" } },
+          },
+        },
         "401": errorRefs["401"],
         "403": errorRefs["403"],
         "404": errorRefs["404"],
@@ -559,7 +476,7 @@ export const paths: Record<string, JSONSchema> = {
         in: "path",
         required: true,
         description:
-          "The ID of the public resource to claim (tsk_…, sub_…, wh_…, memo_…, or msg_…).",
+          "The ID of the public resource to claim (tsk_…, wh_…, art_…, or msg_…).",
         schema: { type: "string" },
       },
     ],
@@ -578,8 +495,9 @@ export const paths: Record<string, JSONSchema> = {
               schema: {
                 oneOf: [
                   { $ref: "#/components/schemas/Task" },
-                  { $ref: "#/components/schemas/Subtask" },
                   { $ref: "#/components/schemas/WebhookEndpoint" },
+                  { $ref: "#/components/schemas/Artifact" },
+                  { $ref: "#/components/schemas/ScheduledMessage" },
                 ],
               },
             },

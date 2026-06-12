@@ -5,14 +5,11 @@ import { scheduledMessage } from "@/lib/db/schema";
 import {
   resolveViewer,
   viewerCanAccess,
-  viewerUser,
   type Viewer,
 } from "@/lib/api/middleware";
 import { ok, noContent, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeScheduledMessage } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse, errorHtmlResponse } from "@/lib/api/html";
 import { messagePatchSchema as updateSchema } from "@/lib/api/schemas";
 
 type Params = { params: Promise<{ id: string }> };
@@ -57,73 +54,14 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const row = await getMessageOrError(id);
   if (!row) {
-    if (wantsHtml(request)) {
-      return errorHtmlResponse(
-        {
-          status: 404,
-          title: "Message not found",
-          message: `No scheduled message with ID '${id}' exists. It may have been deleted.`,
-          user: viewerUser(viewer),
-        },
-        request
-      );
-    }
     return errorResponse(errors.notFound("scheduled message", id), 404);
   }
 
   if (!checkOwnership(row, viewer)) {
-    if (wantsHtml(request)) {
-      return errorHtmlResponse(
-        {
-          status: 403,
-          title: "You don't have access to this message",
-          message:
-            "This message belongs to another organization. Sign in with an account that's a member of the owning organization, or use its API key.",
-          user: viewerUser(viewer),
-        },
-        request
-      );
-    }
     return errorResponse(errors.forbidden(), 403);
   }
 
-  const serialized = serializeScheduledMessage(row);
-
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: row.id,
-        objectType: "scheduled_message",
-        user: viewerUser(viewer),
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "messages", href: "/api/messages" },
-          { label: row.id },
-        ],
-        resource: serialized,
-        apiRef: [
-          {
-            method: "GET",
-            path: `/api/messages/${id}`,
-            description: "Get this message.",
-          },
-          {
-            method: "PATCH",
-            path: `/api/messages/${id}`,
-            description: "Reschedule or edit (only before it fires).",
-          },
-          {
-            method: "DELETE",
-            path: `/api/messages/${id}`,
-            description: "Cancel and delete this message.",
-          },
-        ],
-      },
-      request
-    );
-  }
-
-  return ok(serialized);
+  return ok(serializeScheduledMessage(row));
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -193,13 +131,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .where(eq(scheduledMessage.id, id))
     .returning();
 
-  if (wantsHtml(request)) {
-    return Response.redirect(
-      new URL(`/api/messages/${id}`, request.url).toString(),
-      303
-    );
-  }
-
   return ok(serializeScheduledMessage(updated));
 }
 
@@ -227,13 +158,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
 
   // Deleting a still-scheduled message cancels it before it can fire.
   await db.delete(scheduledMessage).where(eq(scheduledMessage.id, id));
-
-  if (wantsHtml(request)) {
-    return Response.redirect(
-      new URL("/api/messages", request.url).toString(),
-      303
-    );
-  }
 
   return noContent();
 }

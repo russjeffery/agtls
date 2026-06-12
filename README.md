@@ -1,14 +1,14 @@
 # agtls
 
-Open-source infrastructure for AI agents. Task lists, webhook catchers, memory, scheduled messages, and more — available via REST and MCP.
+Open-source infrastructure for AI agents. Task lists, webhook catchers, artifacts, scheduled messages, and more — available via REST and MCP.
 
 ## Features
 
 | Tool | REST | MCP | Status |
 |------|------|-----|--------|
-| Task Lists | `/api/tasks`, `/api/subtasks` | `tasks_*` | ✅ |
+| Task Lists | `/api/tasks` | `tasks_*` | ✅ |
 | Webhook Catcher | `/api/webhooks`, `/api/catch/:id` | `webhook_*` | ✅ |
-| Memory | `/api/memories` | `memory_*` | ✅ |
+| Artifacts | `/api/artifacts` | `artifact_*` | ✅ |
 | Scheduled Messages | `/api/messages`, `/api/messages/dispatch` | `messages_*` | ✅ |
 | Pub/Sub | `/api/channels` | `pubsub_*` | 🔜 |
 | Gist | `/api/gists` | `gist_*` | 🔜 |

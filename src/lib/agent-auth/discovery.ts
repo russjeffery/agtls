@@ -83,7 +83,7 @@ register against ${SERVICE_NAME} and authenticate on behalf of a user.
 
 ## Scopes
 
-- \`api.read\` — read tasks, subtasks, webhooks, and other resources.
+- \`api.read\` — read tasks, webhooks, and other resources.
 - \`api.write\` — create and modify resources.
 
 Anonymous (pre-claim) credentials receive \`api.read\` only; claimed and
@@ -148,9 +148,9 @@ full-scope credential synchronously. Full protocol details: ${base}/auth.md
 REST base: \`${base}/api\` — JSON in/out, errors in a
 \`{"error": {"type", "code", "message"}}\` envelope.
 
-- \`POST /api/tasks\` \`{"name": "..."}\` — create a task (container)
-- \`POST /api/tasks/{id}/subtasks\` \`{"title": "..."}\` — add work items
-- \`PATCH /api/subtasks/{id}\` \`{"status": "in_progress" | "done"}\` — track progress
+- \`POST /api/tasks\` \`{"name": "...", "priority": "high", "labels": ["sprint-1"]}\` — create a task
+- \`GET /api/tasks?label=sprint-1\` — list tasks filtered by label
+- \`PATCH /api/tasks/{id}\` \`{"priority": "critical", "due_at": 1750000000}\` — update a task
 - \`POST /api/webhooks\` \`{"name": "..."}\` — get a URL that captures anything
   POSTed to it; read events back at \`GET /api/webhooks/{id}/events\`
 

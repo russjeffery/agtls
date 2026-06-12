@@ -21,7 +21,6 @@ import {
   jwksUriFor,
   _resetTrustListCache,
 } from "@/lib/agent-auth/trusted-providers";
-import { wantsHtml } from "@/lib/api/accepts";
 
 // The harness sets NEXT_PUBLIC_APP_URL = "https://app.example.com".
 const APP = "https://app.example.com";
@@ -92,29 +91,5 @@ describe("trusted-providers", () => {
 
     setProviders("{ not json");
     expect(resolveProvider("https://anything.example.com")).toBeUndefined();
-  });
-});
-
-// ─── content negotiation ─────────────────────────────────────────────────────
-
-describe("wantsHtml", () => {
-  function req(accept?: string): Request {
-    const headers = new Headers();
-    if (accept !== undefined) headers.set("accept", accept);
-    return new Request("https://app.example.com/api/tasks", { headers });
-  }
-
-  it("is true for browser Accept headers", () => {
-    expect(wantsHtml(req("text/html,application/xhtml+xml,*/*"))).toBe(true);
-  });
-
-  it("is false for JSON or absent Accept", () => {
-    expect(wantsHtml(req("application/json"))).toBe(false);
-    expect(wantsHtml(req())).toBe(false);
-    expect(wantsHtml(req(""))).toBe(false);
-  });
-
-  it("is false when Accept starts with application/json even if text/html appears later", () => {
-    expect(wantsHtml(req("application/json, text/html"))).toBe(false);
   });
 });

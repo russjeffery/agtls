@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { waitForClaimPath } from "./helpers";
 
 // Foundation E2E smoke: proves the dev server boots against the PGlite test DB,
-// content negotiation serves HTML, and the browser-driven claim ceremony works
+// the resource API serves JSON, and the browser-driven claim ceremony works
 // end to end (server action mints the OTP, API completes the claim).
 
 test("home page renders", async ({ page }) => {
@@ -10,10 +10,10 @@ test("home page renders", async ({ page }) => {
   await expect(page.locator("body")).toBeVisible();
 });
 
-test("resource API serves an HTML page to browsers", async ({ page }) => {
+test("resource API serves JSON to browsers", async ({ page }) => {
   const res = await page.goto("/api/tasks");
   expect(res?.status()).toBe(200);
-  expect(res?.headers()["content-type"]).toContain("text/html");
+  expect(res?.headers()["content-type"]).toContain("application/json");
 });
 
 test("email-verification claim ceremony works through the browser", async ({

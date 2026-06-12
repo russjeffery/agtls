@@ -12,13 +12,6 @@ const operationIds: Record<string, string> = {
   "get /api/tasks/{id}": "getTask",
   "patch /api/tasks/{id}": "updateTask",
   "delete /api/tasks/{id}": "deleteTask",
-  "get /api/tasks/{id}/subtasks": "listTaskSubtasks",
-  "post /api/tasks/{id}/subtasks": "createTaskSubtask",
-  "get /api/subtasks": "listSubtasks",
-  "post /api/subtasks": "createSubtask",
-  "get /api/subtasks/{id}": "getSubtask",
-  "patch /api/subtasks/{id}": "updateSubtask",
-  "delete /api/subtasks/{id}": "deleteSubtask",
   "get /api/webhooks": "listWebhookEndpoints",
   "post /api/webhooks": "createWebhookEndpoint",
   "get /api/webhooks/{id}": "getWebhookEndpoint",
@@ -28,11 +21,12 @@ const operationIds: Record<string, string> = {
   "delete /api/webhooks/{id}/events": "deleteAllWebhookEvents",
   "get /api/webhooks/{id}/events/{eventId}": "getWebhookEvent",
   "delete /api/webhooks/{id}/events/{eventId}": "deleteWebhookEvent",
-  "get /api/memories": "listMemories",
-  "post /api/memories": "createMemory",
-  "get /api/memories/{id}": "getMemory",
-  "patch /api/memories/{id}": "updateMemory",
-  "delete /api/memories/{id}": "deleteMemory",
+  "get /api/artifacts": "listArtifacts",
+  "post /api/artifacts": "createArtifact",
+  "get /api/artifacts/{id}": "getArtifact",
+  "patch /api/artifacts/{id}": "updateArtifact",
+  "delete /api/artifacts/{id}": "deleteArtifact",
+  "get /api/artifacts/{id}/raw": "getArtifactRaw",
   "get /api/messages": "listMessages",
   "post /api/messages": "scheduleMessage",
   "get /api/messages/{id}": "getMessage",
@@ -62,9 +56,8 @@ function withOperationIds(
 }
 
 // Builds the OpenAPI 3.1 document describing the public REST surface (core
-// resources: tasks, subtasks, webhooks + events, memories, messages, claim,
-// catch). Pure — no IO — so the result is memoized below and reused across
-// requests.
+// resources: tasks, webhooks + events, artifacts, messages, claim, catch).
+// Pure — no IO — so the result is memoized below and reused across requests.
 export function buildOpenApiDocument(): Record<string, unknown> {
   const appUrl = (
     process.env.NEXT_PUBLIC_APP_URL ??
@@ -87,10 +80,13 @@ export function buildOpenApiDocument(): Record<string, unknown> {
     servers: [{ url: appUrl }],
     security: [{}, { bearerAuth: [] }],
     tags: [
-      { name: "Tasks", description: "Containers for subtasks." },
-      { name: "Subtasks", description: "Units of work." },
+      {
+        name: "Tasks",
+        description:
+          "Units of work with priorities, due dates, and labels for flexible grouping.",
+      },
       { name: "Webhooks", description: "Capture and inspect inbound HTTP requests." },
-      { name: "Memory", description: "Markdown notes an agent can store and recall." },
+      { name: "Artifacts", description: "Markdown files an agent can store and recall." },
       {
         name: "Messages",
         description: "Schedule HTTP requests to trigger an agent at a later time.",

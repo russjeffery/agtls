@@ -6,8 +6,6 @@ import { getMembership } from "@/lib/orgs/service";
 import { ok, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeApiKey } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
 import { headers } from "next/headers";
 
 // Any member may inspect a key; revocation requires owner or admin.
@@ -32,9 +30,8 @@ type RouteContext = { params: Promise<{ id: string; keyId: string }> };
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const { id, keyId } = await params;
 
-  let session;
   try {
-    ({ session } = await requireMember(id));
+    await requireMember(id);
   } catch (e: unknown) {
     return accessError(e, id);
   }
@@ -47,32 +44,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   if (!row) return errorResponse(errors.notFound("api_key", keyId), 404);
 
-  const serialized = serializeApiKey(row);
-
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: row.id,
-        objectType: "api_key",
-        user: { name: session.user.name, email: session.user.email },
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "organizations", href: "/api/organizations" },
-          { label: id, href: `/api/organizations/${id}` },
-          { label: "keys", href: `/api/organizations/${id}/keys` },
-          { label: row.id },
-        ],
-        resource: serialized,
-        apiRef: [
-          { method: "GET", path: `/api/organizations/${id}/keys/${keyId}`, description: "Get this API key." },
-          { method: "DELETE", path: `/api/organizations/${id}/keys/${keyId}`, description: "Revoke this key. Revocation is permanent." },
-        ],
-      },
-      request
-    );
-  }
-
-  return ok(serialized);
+  return ok(serializeApiKey(row));
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
@@ -98,8 +70,5 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     .where(eq(apiKey.id, keyId))
     .returning();
 
-  if (wantsHtml(request)) {
-    return Response.redirect(new URL(`/api/organizations/${id}/keys`, request.url).toString(), 303);
-  }
   return ok(serializeApiKey(revoked));
 }

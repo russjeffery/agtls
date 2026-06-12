@@ -9,8 +9,6 @@ import { hashApiKey } from "@/lib/api/middleware";
 import { created, errorResponse, listResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeApiKey } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
 import { headers } from "next/headers";
 
 // Any member may list keys; minting requires owner or admin. Non-members get
@@ -40,9 +38,8 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
 
-  let session;
   try {
-    ({ session } = await requireMember(id));
+    await requireMember(id);
   } catch (e: unknown) {
     return accessError(e, id);
   }
@@ -55,49 +52,14 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
   const data = rows.map(serializeApiKey);
 
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: "API Keys",
-        user: { name: session.user.name, email: session.user.email },
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "organizations", href: "/api/organizations" },
-          { label: id, href: `/api/organizations/${id}` },
-          { label: "keys" },
-        ],
-        description: "API keys for this organization. Keys are shown only once at creation.",
-        list: {
-          items: data as Record<string, unknown>[],
-          columns: [
-            { key: "id", label: "ID", mono: true },
-            { key: "name", label: "Name" },
-            { key: "key", label: "Key (prefix)", mono: true },
-            { key: "last_used_at", label: "Last Used" },
-            { key: "created_at", label: "Created" },
-          ],
-          itemHref: (item) => `/api/organizations/${id}/keys/${(item as { id: string }).id}`,
-          hasMore: false,
-          nextCursor: null,
-        },
-        apiRef: [
-          { method: "GET", path: `/api/organizations/${id}/keys`, description: "List active API keys." },
-          { method: "POST", path: `/api/organizations/${id}/keys`, description: "Create a key. The full key is shown only in the response — copy it now." },
-        ],
-      },
-      request
-    );
-  }
-
   return listResponse(data, false, null, data.length);
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
 
-  let session;
   try {
-    ({ session } = await requireMember(id, ["owner", "admin"]));
+    await requireMember(id, ["owner", "admin"]);
   } catch (e: unknown) {
     return accessError(e, id);
   }
@@ -137,30 +99,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     revoked_at: null,
     created_at: Math.floor(Date.now() / 1000),
   };
-
-  if (wantsHtml(request)) {
-    // Show the key in a special one-time page since we can't redirect (key would be lost)
-    return htmlResponse(
-      {
-        title: keyId,
-        objectType: "api_key",
-        user: { name: session.user.name, email: session.user.email },
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "organizations", href: "/api/organizations" },
-          { label: id, href: `/api/organizations/${id}` },
-          { label: "keys", href: `/api/organizations/${id}/keys` },
-          { label: keyId },
-        ],
-        description: "Save this API key now — it will not be shown again.",
-        resource: responseData,
-        apiRef: [
-          { method: "DELETE", path: `/api/organizations/${id}/keys/${keyId}`, description: "Revoke this key." },
-        ],
-      },
-      request
-    );
-  }
 
   return created(responseData);
 }

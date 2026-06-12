@@ -7,8 +7,6 @@ import { getMembership } from "@/lib/orgs/service";
 import { ok, noContent, errorResponse } from "@/lib/api/response";
 import { errors } from "@/lib/api/errors";
 import { serializeOrganization } from "@/lib/api/serialize";
-import { wantsHtml } from "@/lib/api/accepts";
-import { htmlResponse } from "@/lib/api/html";
 import { headers } from "next/headers";
 
 // Reads require membership; writes require the owner or admin role. The 404
@@ -45,44 +43,14 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
-  let org, session;
+  let org;
   try {
-    ({ org, session } = await requireMember(id));
+    ({ org } = await requireMember(id));
   } catch (e: unknown) {
-    if (e instanceof Error && e.message === "Unauthorized" && wantsHtml(request)) {
-      return Response.redirect(new URL("/sign-in", request.url).toString(), 302);
-    }
     return accessError(e, id);
   }
 
-  const serialized = serializeOrganization(org);
-
-  if (wantsHtml(request)) {
-    return htmlResponse(
-      {
-        title: org.id,
-        objectType: "organization",
-        user: { name: session.user.name, email: session.user.email },
-        breadcrumb: [
-          { label: "API", href: "/api" },
-          { label: "organizations", href: "/api/organizations" },
-          { label: org.id },
-        ],
-        resource: serialized,
-        apiRef: [
-          { method: "GET", path: `/api/organizations/${id}`, description: "Get this organization." },
-          { method: "PATCH", path: `/api/organizations/${id}`, description: "Update organization name. Requires the owner or admin role." },
-          { method: "DELETE", path: `/api/organizations/${id}`, description: "Delete this organization and all its resources. Requires the owner role." },
-          { method: "GET", path: `/api/organizations/${id}/members`, description: "List members — humans and agents." },
-          { method: "GET", path: `/api/organizations/${id}/keys`, description: "List API keys for this organization." },
-          { method: "POST", path: `/api/organizations/${id}/keys`, description: "Create a new API key. The key is shown only once." },
-        ],
-      },
-      request
-    );
-  }
-
-  return ok(serialized);
+  return ok(serializeOrganization(org));
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
@@ -110,9 +78,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     .where(eq(organization.id, id))
     .returning();
 
-  if (wantsHtml(request)) {
-    return Response.redirect(new URL(`/api/organizations/${id}`, request.url).toString(), 303);
-  }
   return ok(serializeOrganization(updated));
 }
 
@@ -126,8 +91,5 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
   await db.delete(organization).where(eq(organization.id, id));
 
-  if (wantsHtml(request)) {
-    return Response.redirect(new URL("/api/organizations", request.url).toString(), 303);
-  }
   return noContent();
 }

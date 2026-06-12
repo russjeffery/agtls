@@ -35,10 +35,10 @@ function mcpOk(data: unknown) {
 export function claimTools(server: McpServer): void {
   server.tool(
     "claim",
-    "Claim a publicly-created resource (task, subtask, webhook endpoint, memory, or scheduled message) for your organization using the claim_token returned when it was created. Requires an API key — register via the agent auth flow if you don't have one.",
+    "Claim a publicly-created resource (task, webhook endpoint, artifact, or scheduled message) for your organization using the claim_token returned when it was created. Requires an API key — register via the agent auth flow if you don't have one.",
     {
       api_key: z.string().optional().describe("API key for authentication"),
-      id: z.string().describe("Resource ID (tsk_..., sub_..., wh_..., memo_..., or msg_...)"),
+      id: z.string().describe("Resource ID (tsk_..., wh_..., art_..., or msg_...)"),
       claim_token: z
         .string()
         .min(1)

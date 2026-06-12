@@ -16,33 +16,32 @@ change a core-resource endpoint, update `src/lib/openapi/paths.ts` to match.
 - Auth is **optional** — unauthenticated requests work but resources are public (no owning organization)
 - `resolveAuth(request)` from `@/lib/api/middleware` returns `AuthContext | null`
 - If auth header is present but invalid, return 401
-- Resource routes that browsers hit use `resolveViewer(request)` instead: it
+- Resource routes that browsers' fetches hit use `resolveViewer(request)` instead: it
   resolves the API key first, then falls back to the BetterAuth session
   cookie. A session viewer acts across every org the user is a member of
-  (`viewerOrganizationIds`, `viewerCanAccess`, `viewerUser` helpers).
+  (`viewerOrganizationIds`, `viewerCanAccess` helpers).
 
-## Content Negotiation
-Every resource route serves both HTML and JSON at the same path.
-- Check `wantsHtml(request)` from `@/lib/api/accepts` in each handler
-- Browser requests (Accept: text/html) → `htmlResponse(opts, request)` from `@/lib/api/html`
-- API clients (Accept: application/json or no Accept) → JSON response as normal
-- POST/PATCH/DELETE on HTML: redirect (303) to the item GET page after success
-- Pass `user: viewerUser(viewer)` in `htmlResponse` opts so the header shows the
-  signed-in account menu (dashboard / API keys / account / sign out)
-- HTML GETs render friendly error pages via `errorHtmlResponse({status, title, message, user}, request)`
-  for 403/404 instead of bare JSON; signed-out list pages render a sign-in
-  `notice` instead of a table
+## Browser UI (no content negotiation)
+The API is **JSON-only** — every `/api/*` route returns `application/json`
+regardless of the `Accept` header. Pasting an `/api/*` URL into a browser returns
+JSON, not a page.
+
+Human-facing browsing lives at separate React pages (`/tasks`, `/webhooks`,
+`/artifacts`, `/messages`, `/organizations`). These are Server Components that
+read the signed-in user via `getPageViewer()` (`@/lib/api/page-viewer`), query
+the DB scoped to the user's organizations, and render with the design system
+(`src/components/resource/`). Their create/edit/delete controls call the JSON API
+with `fetch`. The pages require a session and redirect to `/sign-in` otherwise.
 
 ## Resource IDs
 Use `newId(type)` from `@/lib/api/ids`. Prefixes:
 - `org_` — organization
 - `mem_` — organization member
 - `agt_` — API key (full key: `agt_live_*` or `agt_test_*`)
-- `tsk_` — task (container)
-- `sub_` — subtask (item within a task)
+- `tsk_` — task (unit of work; flat, grouped via labels)
 - `wh_`  — webhook endpoint
 - `whe_` — webhook event
-- `memo_` — memory (a stored file of content)
+- `art_` — artifact (a stored file of content)
 - `msg_` — scheduled message (delayed HTTP trigger)
 
 ## Error Envelope
@@ -94,9 +93,7 @@ Use `listResponse()` from `@/lib/api/response`.
 ## Ownership & Public Access
 - Resources have a nullable `organization_id` column
 - API-key requests: set `organization_id` from `auth.organizationId` on create
-- Unauthenticated requests: `organization_id = null` (public resource). A
-  session user creating a subtask under an owned parent task inherits the
-  parent's org.
+- Unauthenticated requests: `organization_id = null` (public resource)
 - On GET/PATCH/DELETE: if the resource has an `organization_id`, the caller
   needs a matching API key **or** a session belonging to a member of the
   owning org (`viewerCanAccess`). If `organization_id = null`, allow any
@@ -129,9 +126,9 @@ Authorization: Bearer agt_live_...
 {"claim_token": "clm_..."}
 ```
 
-- `{id}` is the resource ID; the route dispatches on prefix (`tsk_`, `sub_`, `wh_`, `memo_`, `msg_`)
+- `{id}` is the resource ID; the route dispatches on prefix (`tsk_`, `wh_`, `art_`, `msg_`)
 - Success: sets `organization_id` to the caller's organization, clears the token (one-shot), returns the resource
-- Claiming a task also claims its public subtasks; claiming a webhook endpoint re-homes its events
+- Claiming a webhook endpoint re-homes its events
 - 401 if unauthenticated, 404 unknown ID, 403 `invalid_claim_token` on mismatch,
   400 `resource_already_claimed` / `resource_not_claimable` otherwise
 - MCP mirror: the `claim` tool
