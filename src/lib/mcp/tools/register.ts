@@ -1,7 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { handleRegister } from "@/lib/agent-auth/service";
+import {
+  handleRegister,
+  requestClaimLinkForCredential,
+} from "@/lib/agent-auth/service";
 import { AgentAuthError } from "@/lib/agent-auth/errors";
+import { resolveAuth } from "@/lib/api/middleware";
 
 // MCP front door for agent self-registration. Without this, an agent reaching
 // agtls over MCP can only create *public* resources (no credential => no owning
@@ -22,6 +26,19 @@ function mcpOk(data: unknown) {
   };
 }
 
+async function getApiKeyId(
+  apiKey: string | undefined | null,
+  extra: { authInfo?: { token?: string } }
+): Promise<string | null> {
+  const token = apiKey ?? extra.authInfo?.token;
+  if (!token) return null;
+  const fakeRequest = new Request("https://internal/mcp", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const auth = await resolveAuth(fakeRequest);
+  return auth?.apiKeyId ?? null;
+}
+
 export function registerTools(server: McpServer): void {
   // ── agent_register ──────────────────────────────────────────────────────────
   server.tool(
@@ -30,8 +47,8 @@ export function registerTools(server: McpServer): void {
       "webhooks, artifacts, and messages you create are saved to your own " +
       "account instead of being public. Call this once, save the returned " +
       "`credential`, and pass it as `api_key` on every subsequent tool call. " +
-      "The `claim_token` lets a human take ownership of your work later — give " +
-      "it to your operator along with their email.",
+      "The returned `claim_link` is a page you can paste straight to your " +
+      "human — they sign in and claim your work, moving it into their account.",
     {
       email: z
         .string()
@@ -41,7 +58,7 @@ export function registerTools(server: McpServer): void {
           "Your operator's email. When provided, agtls emails them an " +
             "approval link and withholds the credential until they confirm " +
             "(service_auth). Omit it to get a working credential immediately " +
-            "(anonymous) that a human can claim later."
+            "(anonymous) plus a `claim_link` you can hand your human directly."
         ),
     },
     async (args) => {
@@ -68,13 +85,57 @@ export function registerTools(server: McpServer): void {
           ...result,
           next_steps:
             "Save `credential` and pass it as `api_key` on every other tool " +
-            "call so your work is owned by your account. Keep `claim_token` " +
-            "private — a human can use it with their email to take ownership.",
+            "call so your work is owned by your account. To get a human to " +
+            "take ownership, paste `claim_link` to them — they sign in and " +
+            "claim you, no email needed. (`claim_token` supports the " +
+            "alternative email/code claim flow.)",
         });
       } catch (e: unknown) {
         if (e instanceof AgentAuthError) return mcpError(e.message);
         return mcpError(
           e instanceof Error ? e.message : "Registration failed."
+        );
+      }
+    }
+  );
+
+  // ── agent_request_claim_link ─────────────────────────────────────────────────
+  server.tool(
+    "agent_request_claim_link",
+    "Generate a fresh link your human can open to claim you. Use this if you " +
+      "registered earlier (anonymously) and didn't keep the `claim_link`, or " +
+      "it expired. Pass your `api_key`. Paste the returned `claim_link` to " +
+      "your human — they sign in and take ownership of your account and work.",
+    {
+      api_key: z
+        .string()
+        .optional()
+        .describe("Your API key (the credential from agent_register)."),
+    },
+    async (args, extra) => {
+      let apiKeyId: string | null;
+      try {
+        apiKeyId = await getApiKeyId(args.api_key, extra);
+      } catch (e: unknown) {
+        return mcpError(e instanceof Error ? e.message : "Invalid API key.");
+      }
+      if (!apiKeyId) {
+        return mcpError(
+          "An API key is required. Register first with agent_register."
+        );
+      }
+      try {
+        const result = await requestClaimLinkForCredential(apiKeyId);
+        return mcpOk({
+          ...result,
+          next_steps:
+            "Paste `claim_link` to your human. When they sign in and confirm, " +
+            "your account and all your work move into theirs.",
+        });
+      } catch (e: unknown) {
+        if (e instanceof AgentAuthError) return mcpError(e.message);
+        return mcpError(
+          e instanceof Error ? e.message : "Could not create a claim link."
         );
       }
     }
