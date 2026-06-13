@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { inArray, desc } from "drizzle-orm";
 import { db, scheduledMessage } from "@/lib/db";
 import { getPageViewer } from "@/lib/api/page-viewer";
@@ -28,21 +27,20 @@ const createFields: FormField[] = [
 
 export default async function MessagesPage() {
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
-  const rows = viewer.organizationIds.length
+  const rows = viewer?.organizationIds.length
     ? await db
-        .select()
-        .from(scheduledMessage)
-        .where(inArray(scheduledMessage.organizationId, viewer.organizationIds))
-        .orderBy(desc(scheduledMessage.createdAt))
-        .limit(100)
+      .select()
+      .from(scheduledMessage)
+      .where(inArray(scheduledMessage.organizationId, viewer.organizationIds))
+      .orderBy(desc(scheduledMessage.createdAt))
+      .limit(100)
     : [];
   const data = rows.map(serializeScheduledMessage);
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Messages", href: "/messages" }]}
       title="Messages"
       description="Scheduled messages — fire an HTTP request to a URL at a later time to trigger an agent."
@@ -71,7 +69,11 @@ export default async function MessagesPage() {
           scheduled: fmtDateTime(m.scheduled_at),
           href: `/messages/${m.id}`,
         }))}
-        emptyMessage="No scheduled messages yet. Schedule one above."
+        emptyMessage={
+          viewer
+            ? "No scheduled messages yet. Schedule one above."
+            : "Sign in to see your organization's messages. Messages scheduled without signing in are public to anyone with the ID."
+        }
       />
     </ResourceShell>
   );

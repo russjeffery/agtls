@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, desc, lt, and } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
+import { beforeCursor } from "@/lib/api/cursor";
 import { db } from "@/lib/db";
 import { artifact } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
@@ -65,7 +66,12 @@ export function artifactTools(server: McpServer): void {
           .where(eq(artifact.id, after))
           .limit(1);
         if (cursor.length > 0) {
-          cursorCondition = lt(artifact.createdAt, cursor[0].createdAt);
+          cursorCondition = beforeCursor(
+            artifact.createdAt,
+            artifact.id,
+            cursor[0].createdAt,
+            after
+          );
         }
       }
 
@@ -77,7 +83,7 @@ export function artifactTools(server: McpServer): void {
         .select()
         .from(artifact)
         .where(conditions)
-        .orderBy(desc(artifact.createdAt))
+        .orderBy(desc(artifact.createdAt), desc(artifact.id))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;

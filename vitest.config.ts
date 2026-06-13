@@ -11,8 +11,8 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./test/setup.ts"],
-    // Each worker process gets its own module-level PGlite instance (see
-    // test/helpers/db.ts) and truncates between tests, so cross-file
+    // Each worker process gets its own module-level in-memory SQLite instance
+    // (see test/helpers/db.ts) and clears tables between tests, so cross-file
     // parallelism is safe; tests within a file run sequentially.
     include: ["test/**/*.test.ts"],
     exclude: ["test/e2e/**", "node_modules/**"],

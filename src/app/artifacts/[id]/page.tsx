@@ -20,12 +20,13 @@ type Params = { params: Promise<{ id: string }> };
 export default async function ArtifactDetailPage({ params }: Params) {
   const { id } = await params;
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
   const [row] = await db.select().from(artifact).where(eq(artifact.id, id)).limit(1);
   if (!row) notFound();
-  const owned = row.organizationId === null || viewer.organizationIds.includes(row.organizationId);
-  if (!owned) notFound();
+  if (row.organizationId !== null) {
+    if (!viewer) redirect("/sign-in");
+    if (!viewer.organizationIds.includes(row.organizationId)) notFound();
+  }
 
   const a = serializeArtifact(row);
 
@@ -47,7 +48,7 @@ export default async function ArtifactDetailPage({ params }: Params) {
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Artifacts", href: "/artifacts" }, { label: a.id }]}
       title={a.name}
       objectType="artifact"

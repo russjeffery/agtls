@@ -31,7 +31,11 @@ Human-facing browsing lives at separate React pages (`/tasks`, `/webhooks`,
 read the signed-in user via `getPageViewer()` (`@/lib/api/page-viewer`), query
 the DB scoped to the user's organizations, and render with the design system
 (`src/components/resource/`). Their create/edit/delete controls call the JSON API
-with `fetch`. The pages require a session and redirect to `/sign-in` otherwise.
+with `fetch`. The pages do not require a session: signed-out visitors get the same
+page with signed-out header chrome — list pages show an empty table (org-scoped
+rows need a session) plus the create form (creating while signed out makes a
+public resource), and detail pages render public (org-less) resources. Only
+org-owned detail pages redirect signed-out visitors to `/sign-in`.
 
 ## Resource IDs
 Use `newId(type)` from `@/lib/api/ids`: a short prefix + `_` + 16 base62 chars
@@ -144,9 +148,10 @@ There is no background worker in a serverless deployment, so delivery is pull-ba
   `scheduled_at` has passed, atomically moves each `scheduled → delivering` (so
   overlapping runs never double-send), fires the request, and records the outcome
   (`delivered`/`failed`, `response_status`, `last_error`, `attempts`).
-- `POST /api/messages/dispatch` runs it. A scheduler (Vercel Cron, system cron,
-  etc.) must call this on an interval. Guard it by setting `CRON_SECRET` — callers
-  then present `Authorization: Bearer <secret>`.
+- `POST /api/messages/dispatch` runs it. In production the Workers cron trigger
+  (`wrangler.jsonc` + `worker.ts`) calls it every minute; any external scheduler
+  can too. Guard it by setting `CRON_SECRET` — callers then present
+  `Authorization: Bearer <secret>`.
 - Only `http`/`https` targets are accepted; other schemes are rejected at create time.
 
 ## Route File Pattern

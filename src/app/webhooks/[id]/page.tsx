@@ -29,12 +29,13 @@ type Params = { params: Promise<{ id: string }> };
 export default async function WebhookDetailPage({ params }: Params) {
   const { id } = await params;
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
   const [row] = await db.select().from(webhookEndpoint).where(eq(webhookEndpoint.id, id)).limit(1);
   if (!row) notFound();
-  const owned = row.organizationId === null || viewer.organizationIds.includes(row.organizationId);
-  if (!owned) notFound();
+  if (row.organizationId !== null) {
+    if (!viewer) redirect("/sign-in");
+    if (!viewer.organizationIds.includes(row.organizationId)) notFound();
+  }
 
   const [{ value: eventCount }] = await db
     .select({ value: count() })
@@ -59,7 +60,7 @@ export default async function WebhookDetailPage({ params }: Params) {
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Webhooks", href: "/webhooks" }, { label: w.id }]}
       title={w.name}
       objectType="webhook_endpoint"

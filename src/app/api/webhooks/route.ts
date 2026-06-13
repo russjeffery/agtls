@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { eq, desc, lt, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
+import { beforeCursor } from "@/lib/api/cursor";
 import { db } from "@/lib/db";
 import { webhookEndpoint } from "@/lib/db/schema";
 import {
@@ -46,7 +47,12 @@ export async function GET(request: NextRequest) {
         .where(eq(webhookEndpoint.id, after))
         .limit(1);
       if (cursor.length > 0) {
-        cursorCondition = lt(webhookEndpoint.createdAt, cursor[0].createdAt);
+        cursorCondition = beforeCursor(
+          webhookEndpoint.createdAt,
+          webhookEndpoint.id,
+          cursor[0].createdAt,
+          after
+        );
       }
     }
 
@@ -58,7 +64,7 @@ export async function GET(request: NextRequest) {
       .select()
       .from(webhookEndpoint)
       .where(conditions)
-      .orderBy(desc(webhookEndpoint.createdAt))
+      .orderBy(desc(webhookEndpoint.createdAt), desc(webhookEndpoint.id))
       .limit(limit + 1);
   }
 

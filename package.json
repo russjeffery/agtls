@@ -6,19 +6,28 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "check": "tsc --noEmit && vitest run",
+    "predeploy:prod": "npm run check",
+    "deploy:prod": "NEXT_PUBLIC_APP_URL=https://agtls.dev opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "predeploy": "npm run check",
+    "deploy": "NEXT_PUBLIC_APP_URL=https://preview.agtls.dev CLOUDFLARE_ENV=preview opennextjs-cloudflare build && CLOUDFLARE_ENV=preview opennextjs-cloudflare deploy",
+    "upload": "NEXT_PUBLIC_APP_URL=https://agtls.dev opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "bash test/scripts/e2e.sh",
-    "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
-    "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
-    "db:push": "dotenv -e .env.local -- drizzle-kit push",
-    "db:studio": "dotenv -e .env.local -- drizzle-kit studio"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply agtls-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply agtls-db --remote",
+    "db:migrate:preview": "wrangler d1 migrations apply agtls-db-preview --remote --env preview"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@neondatabase/serverless": "^1.1.0",
+    "@opennextjs/cloudflare": "^1.19.11",
+    "@shikijs/langs": "^4.2.0",
     "better-auth": "^1.6.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -37,7 +46,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.1",
+    "@libsql/client": "^0.17.3",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -49,6 +58,7 @@
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "wrangler": "^4.100.0"
   }
 }

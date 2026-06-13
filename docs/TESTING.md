@@ -1,12 +1,12 @@
 # Testing
 
 agtls has two test layers, both fully self-contained — they run with **no
-external services** (no Neon, no SMTP, no provider JWKS endpoints).
+external services** (no Cloudflare, no SMTP, no provider JWKS endpoints).
 
 | Layer | Runner | What it covers | DB |
 | ----- | ------ | -------------- | -- |
-| Unit + integration | **Vitest** | pure logic, every REST route, auth, the full agent-auth (auth.md) flows | in-process **PGlite** (WASM Postgres) |
-| End-to-end | **Playwright** | the real app in a browser: landing page, JSON API, the React resource pages, the claim OTP ceremony | a `next dev` server backed by PGlite |
+| Unit + integration | **Vitest** | pure logic, every REST route, auth, the full agent-auth (auth.md) flows | in-process **SQLite** (libsql, in-memory) |
+| End-to-end | **Playwright** | the real app in a browser: landing page, JSON API, the React resource pages, the claim OTP ceremony | a `next dev` server backed by a SQLite file |
 
 ```bash
 npm test          # Vitest (unit + integration) — fast, no browser
@@ -19,10 +19,11 @@ npm run test:e2e  # Playwright — boots a dev server, drives Chromium
 The design goal is **real behavior, zero external dependencies**.
 
 - **Database** — `@/lib/db` is mocked (Vitest) / driver-switched (E2E) to
-  [PGlite](https://github.com/electric-sql/pglite), an in-process WASM build of
-  Postgres. The actual Drizzle schema is pushed into it via `drizzle-kit`'s
-  programmatic migration API, so handlers run **real SQL** against a real
-  Postgres engine — not a hand-written mock. Tables are truncated between tests.
+  [libsql](https://github.com/tursodatabase/libsql), an in-process SQLite — the
+  same engine as production D1. The actual Drizzle schema is pushed into it via
+  `drizzle-kit`'s programmatic migration API, so handlers run **real SQL**
+  against a real SQLite engine — not a hand-written mock. Tables are cleared
+  between tests.
 - **Provider JWKS** (agent-verified / ID-JAG flow) — the remote key fetch is
   replaced with an in-memory `jose` ES256 keypair. Tests mint their own ID-JAGs
   and logout tokens with it. See `test/helpers/agent-auth.ts`.
@@ -36,7 +37,7 @@ The design goal is **real behavior, zero external dependencies**.
   before each test so cases don't leak into one another.
 
 The only `src/` accommodations for testing (all test-gated, no production
-effect) are: a PGlite driver branch in `src/lib/db/index.ts` keyed off
+effect) are: a SQLite-file driver branch in `src/lib/db/index.ts` keyed off
 `AGTLS_TEST_DB_DIR`, an email-capture branch in `src/lib/email.ts` keyed off
 `AGTLS_TEST_EMAIL_FILE`, and `_reset*` helpers alongside the existing ones.
 
@@ -46,7 +47,7 @@ effect) are: a PGlite driver branch in `src/lib/db/index.ts` keyed off
 test/
   setup.ts                 global Vitest setup (db mock, resets, env)
   helpers/
-    db.ts                  PGlite instance + schema migration + truncate
+    db.ts                  in-memory SQLite + schema migration + reset
     request.ts             makeRequest / json / routeParams
     seed.ts                seedOrganization → { organizationId, key, ... }
     agent-auth.ts          trusted-provider + ID-JAG / logout-token minting
@@ -83,7 +84,7 @@ const assertion = await mintIdJag();        // valid ID-JAG; tweak via options
 ## Notes
 
 - E2E is run through `test/scripts/e2e.sh` (not `playwright test` directly): it
-  migrates a fresh PGlite db, boots `next dev`, waits for readiness, then runs
+  migrates a fresh SQLite db, boots `next dev`, waits for readiness, then runs
   Playwright and tears the server down. Playwright's own `webServer` option is
   not used because it spawns commands in a shell where the local toolchain does
   not resolve reliably in every environment.

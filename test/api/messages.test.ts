@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { makeRequest, json, routeParams } from "../helpers/request";
 import { seedOrganization } from "../helpers/seed";
+import { testDb } from "../helpers/db";
+import { scheduledMessage } from "@/lib/db/schema";
 import { dispatchDueMessages } from "@/lib/messages/dispatch";
 
 const collection = () => import("@/app/api/messages/route");
@@ -213,6 +216,58 @@ describe("dispatchDueMessages", () => {
     expect(after.last_error).toContain("500");
   });
 
+  it("passes an abort signal so a hung target can't stall the run", async () => {
+    await schedule({
+      url: "https://example.com/slow",
+      scheduled_at: Math.floor(Date.now() / 1000) - 5,
+    });
+    const { impl, calls } = fetchStub(200);
+    await dispatchDueMessages({ fetchImpl: impl, requestTimeoutMs: 1234 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("reclaims a message stuck in delivering after its claim goes stale", async () => {
+    const msg = await schedule({
+      url: "https://example.com/orphan",
+      scheduled_at: Math.floor(Date.now() / 1000) - 60,
+    });
+    // Simulate a dispatcher that claimed the message and then died mid-run.
+    await testDb
+      .update(scheduledMessage)
+      .set({
+        status: "delivering",
+        updatedAt: new Date(Date.now() - 10 * 60_000),
+      })
+      .where(eq(scheduledMessage.id, msg.id));
+
+    const { impl, calls } = fetchStub(200);
+    const summary = await dispatchDueMessages({ fetchImpl: impl });
+    expect(summary.dispatched).toBe(1);
+    expect(summary.delivered).toBe(1);
+    expect(calls).toHaveLength(1);
+
+    const after = await getMessage(msg.id);
+    expect(after.status).toBe("delivered");
+  });
+
+  it("leaves a freshly claimed delivering message alone", async () => {
+    const msg = await schedule({
+      url: "https://example.com/in-flight",
+      scheduled_at: Math.floor(Date.now() / 1000) - 60,
+    });
+    // Another dispatcher claimed this moments ago and is still working on it.
+    await testDb
+      .update(scheduledMessage)
+      .set({ status: "delivering", updatedAt: new Date() })
+      .where(eq(scheduledMessage.id, msg.id));
+
+    const { impl, calls } = fetchStub(200);
+    const summary = await dispatchDueMessages({ fetchImpl: impl });
+    expect(summary.dispatched).toBe(0);
+    expect(calls).toHaveLength(0);
+  });
+
   it("does not re-deliver an already-delivered message", async () => {
     await schedule({
       url: "https://example.com",
@@ -258,6 +313,27 @@ describe("POST /api/messages/dispatch", () => {
       );
       expect(res.status).toBe(401);
     } finally {
+      delete process.env.CRON_SECRET;
+    }
+  });
+
+  // External schedulers may trigger with GET and a `Bearer ${CRON_SECRET}` header.
+  it("accepts a GET with the cron secret, as external schedulers send", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    const stub = fetchStub(200);
+    vi.stubGlobal("fetch", stub.impl);
+    try {
+      const { GET } = await dispatch();
+      const res = await GET(
+        makeRequest("/api/messages/dispatch", {
+          headers: { authorization: "Bearer s3cret" },
+        })
+      );
+      expect(res.status).toBe(200);
+      const body = await json<{ object: string }>(res);
+      expect(body.object).toBe("dispatch_result");
+    } finally {
+      vi.unstubAllGlobals();
       delete process.env.CRON_SECRET;
     }
   });

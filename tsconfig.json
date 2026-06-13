@@ -30,5 +30,8 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "scripts"]
+  // cloudflare-env.d.ts (wrangler typegen) carries the full workerd runtime
+  // globals, which clash with the DOM lib types the app code is written
+  // against (Response.json, process.env, …) — keep it out of this program.
+  "exclude": ["node_modules", "scripts", ".open-next", "cloudflare-env.d.ts"]
 }

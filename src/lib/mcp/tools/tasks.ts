@@ -1,7 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, and, desc, lt, arrayContains } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { eq, and, desc } from "drizzle-orm";
+import { db, jsonArrayContains } from "@/lib/db";
+import { beforeCursor } from "@/lib/api/cursor";
 import { task } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
@@ -97,7 +98,7 @@ export function taskTools(server: McpServer): void {
       const conditions = [ownerCondition];
 
       if (args.label) {
-        conditions.push(arrayContains(task.labels, [args.label]));
+        conditions.push(jsonArrayContains(task.labels, [args.label]));
       }
 
       if (args.after) {
@@ -106,14 +107,17 @@ export function taskTools(server: McpServer): void {
           .from(task)
           .where(eq(task.id, args.after))
           .limit(1);
-        if (cursorRow) conditions.push(lt(task.createdAt, cursorRow.createdAt));
+        if (cursorRow)
+          conditions.push(
+            beforeCursor(task.createdAt, task.id, cursorRow.createdAt, args.after)
+          );
       }
 
       const rows = await db
         .select()
         .from(task)
         .where(and(...conditions))
-        .orderBy(desc(task.createdAt))
+        .orderBy(desc(task.createdAt), desc(task.id))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;

@@ -2,22 +2,20 @@ import { beforeAll, beforeEach, vi } from "vitest";
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 // Set before any app module is imported so config derivation (discovery URLs,
-// audiences) is deterministic. A dummy DATABASE_URL keeps any incidental import
-// of the real driver from throwing; the db module itself is mocked below.
-process.env.DATABASE_URL ??= "postgresql://test:test@localhost/test";
+// audiences) is deterministic. The db module itself is mocked below, so no
+// D1 binding is needed.
 process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
 process.env.BETTER_AUTH_URL = "https://app.example.com";
 process.env.BETTER_AUTH_SECRET ??= "test-secret-not-used-for-anything-real";
 
 // ─── Database stub ────────────────────────────────────────────────────────────
-// Point every `import { db } from "@/lib/db"` at the shared PGlite instance, and
-// re-export the real schema so `import { task } from "@/lib/db"` keeps working.
+// Point every `import { db } from "@/lib/db"` at the shared in-memory SQLite
+// instance, and re-export the real schema so `import { task } from "@/lib/db"`
+// keeps working.
 vi.mock("@/lib/db", async () => {
-  const schema = await vi.importActual<typeof import("@/lib/db/schema")>(
-    "@/lib/db/schema"
-  );
+  const actual = await vi.importActual<typeof import("@/lib/db")>("@/lib/db");
   const { testDb } = await import("./helpers/db");
-  return { db: testDb, ...schema };
+  return { ...actual, db: testDb };
 });
 
 // ─── JWKS stub ────────────────────────────────────────────────────────────────

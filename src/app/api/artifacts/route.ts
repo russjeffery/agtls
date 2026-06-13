@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { eq, desc, lt, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
+import { beforeCursor } from "@/lib/api/cursor";
 import { db } from "@/lib/db";
 import { artifact } from "@/lib/db/schema";
 import {
@@ -46,7 +47,12 @@ export async function GET(request: NextRequest) {
         .where(eq(artifact.id, after))
         .limit(1);
       if (cursor.length > 0) {
-        cursorCondition = lt(artifact.createdAt, cursor[0].createdAt);
+        cursorCondition = beforeCursor(
+          artifact.createdAt,
+          artifact.id,
+          cursor[0].createdAt,
+          after
+        );
       }
     }
 
@@ -58,7 +64,7 @@ export async function GET(request: NextRequest) {
       .select()
       .from(artifact)
       .where(conditions)
-      .orderBy(desc(artifact.createdAt))
+      .orderBy(desc(artifact.createdAt), desc(artifact.id))
       .limit(limit + 1);
   }
 

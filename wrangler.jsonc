@@ -1,0 +1,113 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "agtls",
+	// Custom entry that wraps the OpenNext-generated handler to add the
+	// `scheduled` handler for the message-dispatch cron (see worker.ts).
+	"main": "worker.ts",
+	"compatibility_date": "2026-05-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	// Workers custom domains: Cloudflare creates and manages the DNS records
+	// and certificates on deploy. (These can only attach when the hostname has
+	// no externally managed DNS records — API error 100117 otherwise.)
+	// workers.dev / preview URLs are disabled so the app only answers on its
+	// canonical origin — BETTER_AUTH_URL, the discovery documents, and the
+	// ID-JAG audience are pinned to it. www → apex redirect lives in worker.ts.
+	"routes": [
+		{
+			"pattern": "agtls.dev",
+			"custom_domain": true
+		},
+		{
+			"pattern": "www.agtls.dev",
+			"custom_domain": true
+		}
+	],
+	"workers_dev": false,
+	"preview_urls": false,
+	"services": [
+		{
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "agtls"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "agtls-db",
+			"database_id": "146b6f09-7987-488b-948c-fd804290946d",
+			// drizzle-kit writes migrations here; `wrangler d1 migrations apply`
+			// reads the same directory.
+			"migrations_dir": "drizzle"
+		},
+		{
+			"binding": "agtls_db",
+			"database_name": "agtls-db",
+			"database_id": "146b6f09-7987-488b-948c-fd804290946d",
+			"remote": true
+		}
+	],
+	// Drives scheduled-message delivery: every minute the scheduled handler in
+	// worker.ts invokes POST /api/messages/dispatch in-process.
+	"triggers": {
+		"crons": [
+			"* * * * *"
+		]
+	},
+	// Secrets (set with `wrangler secret put`): BETTER_AUTH_SECRET, and
+	// optionally CRON_SECRET, GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET,
+	// AGENT_AUTH_TRUSTED_PROVIDERS. Local dev reads them from .dev.vars.
+	"vars": {
+		"BETTER_AUTH_URL": "https://agtls.dev",
+		"NEXT_PUBLIC_APP_URL": "https://agtls.dev"
+	},
+	// Preview deployment: `npm run deploy:preview` → https://preview.agtls.dev.
+	// Separate worker, separate D1, separate secrets (set them with
+	// `wrangler secret put <NAME> --env preview`). NOINDEX makes worker.ts
+	// serve a deny-all robots.txt and add `X-Robots-Tag: noindex` to every
+	// response. Non-inheritable keys (routes, vars, d1, services) must be
+	// restated here; main/assets/compatibility settings inherit.
+	"env": {
+		"preview": {
+			"name": "agtls-preview",
+			"routes": [
+				{
+					"pattern": "preview.agtls.dev",
+					"custom_domain": true
+				}
+			],
+			"workers_dev": false,
+			"preview_urls": false,
+			"services": [
+				{
+					"binding": "WORKER_SELF_REFERENCE",
+					"service": "agtls-preview"
+				}
+			],
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "agtls-db-preview",
+					"database_id": "8a4773b4-a92f-40bc-95ba-291a6e684ace",
+					"migrations_dir": "drizzle"
+				}
+			],
+			"triggers": {
+				"crons": [
+					"* * * * *"
+				]
+			},
+			"vars": {
+				"BETTER_AUTH_URL": "https://preview.agtls.dev",
+				"NEXT_PUBLIC_APP_URL": "https://preview.agtls.dev",
+				"NOINDEX": "1"
+			}
+		}
+	}
+}

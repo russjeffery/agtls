@@ -136,6 +136,19 @@
   --bevel-top: inset 0 1px 0 oklch(1 0 0 / 0.05);
   --ring-focus: 0 0 0 3px var(--accent-ring);
 
+  /* Shiki syntax highlighting (css-variables theme — see src/lib/shiki.ts) */
+  --shiki-background: transparent;
+  --shiki-foreground: var(--text-body);
+  --shiki-token-keyword: var(--info-400); /* JSON object keys */
+  --shiki-token-string: var(--green-300);
+  --shiki-token-string-expression: var(--green-300); /* quoted string values */
+  --shiki-token-constant: var(--amber-400); /* numbers, booleans, null */
+  --shiki-token-punctuation: var(--text-faint);
+  --shiki-token-comment: var(--text-faint);
+  --shiki-token-function: var(--text-body);
+  --shiki-token-parameter: var(--text-body);
+  --shiki-token-link: var(--ds-accent);
+
   /* Motion */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
@@ -256,5 +269,48 @@
     text-transform: uppercase;
     color: var(--text-muted);
     font-weight: 500;
+  }
+
+  /* JsonCard — collapsible raw-JSON disclosure (json-card-view.tsx) */
+  .json-card {
+    interpolate-size: allow-keywords;
+  }
+
+  .json-card summary {
+    list-style: none;
+  }
+
+  .json-card summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .json-card .json-card-chevron {
+    transition: transform var(--dur) var(--ease-out);
+  }
+
+  .json-card[open] .json-card-chevron {
+    transform: rotate(90deg);
+  }
+
+  /* Slide the content open/closed; browsers without ::details-content
+     interpolation just snap, which is fine. */
+  .json-card::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition:
+      block-size var(--dur) var(--ease-out),
+      content-visibility var(--dur) allow-discrete;
+  }
+
+  .json-card[open]::details-content {
+    block-size: auto;
+  }
+
+  .json-card-code pre {
+    margin: 0;
+    padding: 0 16px 16px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.7;
   }
 }

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // Browser-driven coverage of the public UI surface: the landing page, the
 // JSON-only REST API, the React resource pages (/tasks, …), and the public
-// discovery documents. All runs against the real dev server (PGlite-backed).
+// discovery documents. All runs against the real dev server (SQLite-backed).
 
 test.describe("landing page", () => {
   test("shows the wordmark, tagline and live tools", async ({ page }) => {
@@ -11,7 +11,7 @@ test.describe("landing page", () => {
       page.getByRole("link", { name: "Agent Tools" }).first()
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /Tools your agent/ })
+      page.getByRole("heading", { name: /tools your agent/i })
     ).toBeVisible();
     await expect(page.getByText("Tasks", { exact: true })).toBeVisible();
     await expect(
@@ -73,11 +73,31 @@ test.describe("JSON-only API", () => {
     expect(body.id).toBe(id);
   });
 
-  test("redirects anonymous browsers from /tasks to sign-in", async ({
+  test("shows the standard /tasks page to anonymous browsers", async ({
     page,
   }) => {
     await page.goto("/tasks");
-    await expect(page).toHaveURL(/\/sign-in/);
+    await expect(page).toHaveURL(/\/tasks$/);
+    await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
+    // Signed-out header chrome, and the empty state explaining sign-in.
+    await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+    await expect(
+      page.getByText("Sign in to see your organization's tasks", { exact: false })
+    ).toBeVisible();
+  });
+
+  test("shows a public task to anonymous browsers", async ({ page, request }) => {
+    const created = await request.post("/api/tasks", {
+      data: { name: "Anonymous Public Task" },
+    });
+    expect(created.status()).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+
+    await page.goto(`/tasks/${id}`);
+    await expect(page).toHaveURL(new RegExp(`/tasks/${id}$`));
+    await expect(
+      page.getByRole("heading", { name: "Anonymous Public Task" })
+    ).toBeVisible();
   });
 });
 

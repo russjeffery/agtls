@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { inArray, desc } from "drizzle-orm";
 import { db, artifact } from "@/lib/db";
 import { getPageViewer } from "@/lib/api/page-viewer";
@@ -29,21 +28,20 @@ const createFields: FormField[] = [
 
 export default async function ArtifactsPage() {
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
-  const rows = viewer.organizationIds.length
+  const rows = viewer?.organizationIds.length
     ? await db
-        .select()
-        .from(artifact)
-        .where(inArray(artifact.organizationId, viewer.organizationIds))
-        .orderBy(desc(artifact.createdAt))
-        .limit(100)
+      .select()
+      .from(artifact)
+      .where(inArray(artifact.organizationId, viewer.organizationIds))
+      .orderBy(desc(artifact.createdAt))
+      .limit(100)
     : [];
   const data = rows.map(serializeArtifact);
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Artifacts", href: "/artifacts" }]}
       title="Artifacts"
       description="Markdown or HTML files an agent can store and recall. Each artifact is a single file of content, served raw at its raw_url."
@@ -72,7 +70,11 @@ export default async function ArtifactsPage() {
           created: fmtDate(a.created_at),
           href: `/artifacts/${a.id}`,
         }))}
-        emptyMessage="No artifacts yet. Create one above."
+        emptyMessage={
+          viewer
+            ? "No artifacts yet. Create one above."
+            : "Sign in to see your organization's artifacts. Artifacts created without signing in are public to anyone with the ID."
+        }
       />
     </ResourceShell>
   );

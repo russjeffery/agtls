@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { waitForClaimPath } from "./helpers";
 
-// Foundation E2E smoke: proves the dev server boots against the PGlite test DB,
+// Foundation E2E smoke: proves the dev server boots against the SQLite test DB,
 // the resource API serves JSON, and the browser-driven claim ceremony works
 // end to end (server action mints the OTP, API completes the claim).
 

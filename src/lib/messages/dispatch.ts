@@ -1,11 +1,11 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { scheduledMessage } from "@/lib/db/schema";
 
 // Delivery engine for scheduled messages. There is no background worker in a
-// serverless deployment, so an external scheduler (Vercel Cron, a system cron
-// hitting POST /api/messages/dispatch, etc.) drives this on an interval. Each
-// call claims due messages, fires them, and records the outcome.
+// serverless deployment, so a scheduler (the Workers cron trigger in worker.ts,
+// a system cron hitting POST /api/messages/dispatch, etc.) drives this on an
+// interval. Each call claims due messages, fires them, and records the outcome.
 
 export interface DispatchResult {
   id: string;
@@ -28,6 +28,14 @@ export interface DispatchOptions {
   limit?: number;
   /** Override the HTTP client (tests inject a stub). Defaults to global fetch. */
   fetchImpl?: typeof fetch;
+  /** Abort a single delivery request after this long. Defaults to 10s. */
+  requestTimeoutMs?: number;
+  /**
+   * Reclaim "delivering" messages whose claim is older than this — the
+   * dispatcher that claimed them died mid-run (crash, function timeout).
+   * Defaults to 5 minutes; must comfortably exceed requestTimeoutMs.
+   */
+  staleClaimMs?: number;
 }
 
 // Bodies are only sent for methods that carry one.
@@ -39,6 +47,8 @@ function methodHasBody(method: string): boolean {
  * Deliver every message whose scheduled time has passed. Each message is first
  * atomically moved scheduled→delivering (a conditional update that only one
  * concurrent dispatcher can win), so overlapping cron runs never double-send.
+ * "delivering" rows whose claim has gone stale (the claiming dispatcher died
+ * mid-run) are reclaimed the same way, so no message is orphaned forever.
  */
 export async function dispatchDueMessages(
   opts: DispatchOptions = {}
@@ -46,32 +56,40 @@ export async function dispatchDueMessages(
   const now = opts.now ?? new Date();
   const limit = opts.limit ?? 25;
   const doFetch = opts.fetchImpl ?? fetch;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? 10_000;
+  const staleClaimMs = opts.staleClaimMs ?? 5 * 60_000;
+  const staleBefore = new Date(now.getTime() - staleClaimMs);
+
+  // A message is claimable if it's due, or if a previous dispatcher claimed it
+  // and then died (claiming bumps updatedAt, so a fresh claim is never stale).
+  const claimable = or(
+    and(
+      eq(scheduledMessage.status, "scheduled"),
+      lte(scheduledMessage.scheduledAt, now)
+    ),
+    and(
+      eq(scheduledMessage.status, "delivering"),
+      lte(scheduledMessage.updatedAt, staleBefore)
+    )
+  );
 
   const due = await db
     .select()
     .from(scheduledMessage)
-    .where(
-      and(
-        eq(scheduledMessage.status, "scheduled"),
-        lte(scheduledMessage.scheduledAt, now)
-      )
-    )
+    .where(claimable)
     .orderBy(asc(scheduledMessage.scheduledAt))
     .limit(limit);
 
   const results: DispatchResult[] = [];
 
   for (const msg of due) {
-    // Claim the message so a concurrent dispatcher can't pick it up too.
+    // Claim the message so a concurrent dispatcher can't pick it up too. The
+    // claimable re-check makes this atomic: a competitor that won in the
+    // meantime has set updatedAt to its claim time, so neither arm matches.
     const [claimed] = await db
       .update(scheduledMessage)
       .set({ status: "delivering", updatedAt: new Date() })
-      .where(
-        and(
-          eq(scheduledMessage.id, msg.id),
-          eq(scheduledMessage.status, "scheduled")
-        )
-      )
+      .where(and(eq(scheduledMessage.id, msg.id), claimable))
       .returning({ id: scheduledMessage.id });
     if (!claimed) continue;
 
@@ -85,6 +103,7 @@ export async function dispatchDueMessages(
         method: msg.method,
         headers: msg.headers ?? undefined,
         body: methodHasBody(msg.method) ? msg.body ?? undefined : undefined,
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
       responseStatus = res.status;
       if (res.ok) {
@@ -93,7 +112,11 @@ export async function dispatchDueMessages(
         lastError = `Target responded with HTTP ${res.status}.`;
       }
     } catch (e: unknown) {
-      lastError = e instanceof Error ? e.message : "Request failed.";
+      if (e instanceof Error && e.name === "TimeoutError") {
+        lastError = `Target did not respond within ${requestTimeoutMs}ms.`;
+      } else {
+        lastError = e instanceof Error ? e.message : "Request failed.";
+      }
     }
 
     await db

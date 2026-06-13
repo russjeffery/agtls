@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
-// Shared, fixed locations for the E2E test database (PGlite, persisted to disk)
-// and the captured-email log. Referenced by both the Playwright config (passed
+// Shared, fixed locations for the E2E test database (a SQLite file) and the
+// captured-email log. Referenced by both the Playwright config (passed
 // into the dev server's env) and global-setup (which migrates the DB).
 // process.cwd() is the project root for both `playwright` and `next dev`.
 const root = process.cwd();

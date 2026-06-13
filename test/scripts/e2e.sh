@@ -21,7 +21,6 @@ export AGTLS_TEST_EMAIL_FILE="$EMAIL_FILE"
 export NEXT_PUBLIC_APP_URL="http://localhost:$PORT"
 export BETTER_AUTH_URL="http://localhost:$PORT"
 export BETTER_AUTH_SECRET="e2e-secret-not-used-for-anything-real"
-export DATABASE_URL="postgresql://e2e:e2e@localhost/e2e"
 
 # Keep the e2e server self-contained: explicitly clear any social-provider
 # credentials so a developer's .env.local can't leak GitHub/Google buttons into

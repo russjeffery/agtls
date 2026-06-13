@@ -5,7 +5,7 @@ import { agentAssertionJti, agentAuditEvent } from "@/lib/db/schema";
 import { markJtiSeen } from "@/lib/agent-auth/replay";
 import { recordAuditEvent } from "@/lib/agent-auth/audit";
 
-// These exercise the small DB-backed helpers against the harness's PGlite.
+// These exercise the small DB-backed helpers against the harness's in-memory SQLite.
 
 describe("markJtiSeen", () => {
   const future = () => new Date(Date.now() + 60_000);

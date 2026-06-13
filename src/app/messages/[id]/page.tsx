@@ -27,12 +27,13 @@ type Params = { params: Promise<{ id: string }> };
 export default async function MessageDetailPage({ params }: Params) {
   const { id } = await params;
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
   const [row] = await db.select().from(scheduledMessage).where(eq(scheduledMessage.id, id)).limit(1);
   if (!row) notFound();
-  const owned = row.organizationId === null || viewer.organizationIds.includes(row.organizationId);
-  if (!owned) notFound();
+  if (row.organizationId !== null) {
+    if (!viewer) redirect("/sign-in");
+    if (!viewer.organizationIds.includes(row.organizationId)) notFound();
+  }
 
   const m = serializeScheduledMessage(row);
   const editable = m.status === "scheduled";
@@ -46,7 +47,7 @@ export default async function MessageDetailPage({ params }: Params) {
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Messages", href: "/messages" }, { label: m.id }]}
       title={m.id}
       objectType="scheduled_message"

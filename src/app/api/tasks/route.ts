@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-import { eq, and, inArray, desc, lt, arrayContains } from "drizzle-orm";
-import { db } from "@/lib/db";
+import { eq, and, inArray, desc } from "drizzle-orm";
+import { db, jsonArrayContains } from "@/lib/db";
+import { beforeCursor } from "@/lib/api/cursor";
 import { task } from "@/lib/db/schema";
 import {
   resolveViewer,
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
     const conditions = [inArray(task.organizationId, scope)];
 
     if (labels.length > 0) {
-      conditions.push(arrayContains(task.labels, labels));
+      conditions.push(jsonArrayContains(task.labels, labels));
     }
 
     // Cursor: resolve createdAt of the "after" row to do time-based pagination
@@ -54,7 +55,9 @@ export async function GET(request: NextRequest) {
         .limit(1);
 
       if (cursorRow) {
-        conditions.push(lt(task.createdAt, cursorRow.createdAt));
+        conditions.push(
+          beforeCursor(task.createdAt, task.id, cursorRow.createdAt, after)
+        );
       }
     }
 
@@ -62,7 +65,7 @@ export async function GET(request: NextRequest) {
       .select()
       .from(task)
       .where(and(...conditions))
-      .orderBy(desc(task.createdAt))
+      .orderBy(desc(task.createdAt), desc(task.id))
       .limit(limit + 1);
   }
 

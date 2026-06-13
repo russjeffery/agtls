@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { inArray, desc } from "drizzle-orm";
 import { db, webhookEndpoint } from "@/lib/db";
 import { getPageViewer } from "@/lib/api/page-viewer";
@@ -19,9 +18,8 @@ const createFields: FormField[] = [
 
 export default async function WebhooksPage() {
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
-  const rows = viewer.organizationIds.length
+  const rows = viewer?.organizationIds.length
     ? await db
         .select()
         .from(webhookEndpoint)
@@ -33,7 +31,7 @@ export default async function WebhooksPage() {
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Webhooks", href: "/webhooks" }]}
       title="Webhooks"
       description="Webhook endpoints you can POST to. Each endpoint captures every inbound request."
@@ -62,7 +60,11 @@ export default async function WebhooksPage() {
           created: fmtDate(w.created_at),
           href: `/webhooks/${w.id}`,
         }))}
-        emptyMessage="No webhook endpoints yet. Create one above."
+        emptyMessage={
+          viewer
+            ? "No webhook endpoints yet. Create one above."
+            : "Sign in to see your organization's webhook endpoints. Endpoints created without signing in are public to anyone with the ID."
+        }
       />
     </ResourceShell>
   );

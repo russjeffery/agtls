@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, desc, lt, and, count } from "drizzle-orm";
+import { eq, desc, and, count } from "drizzle-orm";
+import { beforeCursor } from "@/lib/api/cursor";
 import { db } from "@/lib/db";
 import { webhookEndpoint, webhookEvent } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
@@ -74,7 +75,12 @@ export function webhookTools(server: McpServer): void {
           .where(eq(webhookEndpoint.id, after))
           .limit(1);
         if (cursor.length > 0) {
-          cursorCondition = lt(webhookEndpoint.createdAt, cursor[0].createdAt);
+          cursorCondition = beforeCursor(
+            webhookEndpoint.createdAt,
+            webhookEndpoint.id,
+            cursor[0].createdAt,
+            after
+          );
         }
       }
 
@@ -86,7 +92,7 @@ export function webhookTools(server: McpServer): void {
         .select()
         .from(webhookEndpoint)
         .where(conditions)
-        .orderBy(desc(webhookEndpoint.createdAt))
+        .orderBy(desc(webhookEndpoint.createdAt), desc(webhookEndpoint.id))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;
@@ -345,7 +351,12 @@ export function webhookTools(server: McpServer): void {
           .where(eq(webhookEvent.id, after))
           .limit(1);
         if (cursor.length > 0) {
-          cursorCondition = lt(webhookEvent.receivedAt, cursor[0].receivedAt);
+          cursorCondition = beforeCursor(
+            webhookEvent.receivedAt,
+            webhookEvent.id,
+            cursor[0].receivedAt,
+            after
+          );
         }
       }
 
@@ -358,7 +369,7 @@ export function webhookTools(server: McpServer): void {
         .select()
         .from(webhookEvent)
         .where(conditions)
-        .orderBy(desc(webhookEvent.receivedAt))
+        .orderBy(desc(webhookEvent.receivedAt), desc(webhookEvent.id))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;

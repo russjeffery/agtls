@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, desc, lt, and } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
+import { beforeCursor } from "@/lib/api/cursor";
 import { db } from "@/lib/db";
 import { scheduledMessage } from "@/lib/db/schema";
 import { resolveAuth } from "@/lib/api/middleware";
@@ -72,7 +73,12 @@ export function messageTools(server: McpServer): void {
           .where(eq(scheduledMessage.id, after))
           .limit(1);
         if (cursor.length > 0) {
-          cursorCondition = lt(scheduledMessage.createdAt, cursor[0].createdAt);
+          cursorCondition = beforeCursor(
+            scheduledMessage.createdAt,
+            scheduledMessage.id,
+            cursor[0].createdAt,
+            after
+          );
         }
       }
 
@@ -84,7 +90,7 @@ export function messageTools(server: McpServer): void {
         .select()
         .from(scheduledMessage)
         .where(conditions)
-        .orderBy(desc(scheduledMessage.createdAt))
+        .orderBy(desc(scheduledMessage.createdAt), desc(scheduledMessage.id))
         .limit(limit + 1);
 
       const hasMore = rows.length > limit;

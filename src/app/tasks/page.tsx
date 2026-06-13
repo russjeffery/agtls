@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { inArray, desc } from "drizzle-orm";
 import { db, task } from "@/lib/db";
 import { getPageViewer } from "@/lib/api/page-viewer";
@@ -39,21 +38,20 @@ const createFields: FormField[] = [
 
 export default async function TasksPage() {
   const viewer = await getPageViewer();
-  if (!viewer) redirect("/sign-in");
 
-  const rows = viewer.organizationIds.length
+  const rows = viewer?.organizationIds.length
     ? await db
-        .select()
-        .from(task)
-        .where(inArray(task.organizationId, viewer.organizationIds))
-        .orderBy(desc(task.createdAt))
-        .limit(100)
+      .select()
+      .from(task)
+      .where(inArray(task.organizationId, viewer.organizationIds))
+      .orderBy(desc(task.createdAt))
+      .limit(100)
     : [];
   const data = rows.map(serializeTask);
 
   return (
     <ResourceShell
-      user={{ name: viewer.user.name, email: viewer.user.email }}
+      user={viewer ? { name: viewer.user.name, email: viewer.user.email } : null}
       breadcrumb={[{ label: "Tasks", href: "/tasks" }]}
       title="Tasks"
       description="Units of work with a priority, an optional due date, and labels for flexible grouping."
@@ -62,7 +60,7 @@ export default async function TasksPage() {
         <ResourceForm
           collapsible
           title="New task"
-          endpoint="/api/tasks"
+          endpoint="/tasks"
           submitLabel="Create task"
           fields={createFields}
         />
@@ -82,7 +80,11 @@ export default async function TasksPage() {
           created: fmtDate(t.created_at),
           href: `/tasks/${t.id}`,
         }))}
-        emptyMessage="No tasks yet. Create one above."
+        emptyMessage={
+          viewer
+            ? "No tasks yet. Create one above."
+            : "Sign in to see your organization's tasks. Tasks created without signing in are public to anyone with the ID."
+        }
       />
     </ResourceShell>
   );

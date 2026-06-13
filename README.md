@@ -42,21 +42,52 @@ npm install
 
 # 2. Configure
 cp .env.local.example .env.local
-# Fill in DATABASE_URL and BETTER_AUTH_SECRET
+# Fill in BETTER_AUTH_SECRET
 
-# 3. Create tables
-npm run db:push
+# 3. Create tables in the local D1 database
+npm run db:migrate:local
 
 # 4. Run
 npm run dev
 ```
 
+## Deploy (Cloudflare Workers)
+
+```bash
+# One-time: create the D1 database and put its id in wrangler.jsonc
+npx wrangler d1 create agtls-db
+
+# Apply migrations to the production database
+npm run db:migrate:remote
+
+# Secrets
+npx wrangler secret put BETTER_AUTH_SECRET
+npx wrangler secret put CRON_SECRET   # recommended; guards /api/messages/dispatch
+
+# Ship it (or `npm run preview` to test in workerd locally first)
+npm run deploy:prod
+```
+
+Scheduled-message delivery runs on a Workers cron trigger (`wrangler.jsonc`,
+every minute) — no external scheduler needed.
+
+### Preview deployments
+
+`npm run deploy` ships the current tree to **https://preview.agtls.dev**
+— a separate Worker (`agtls-preview`) with its own D1 database
+(`agtls-db-preview`, schema via `npm run db:migrate:preview`) and its own
+secrets (`wrangler secret put <NAME> --env preview`). Preview responses carry
+`X-Robots-Tag: noindex` and a deny-all `robots.txt`, so it never gets indexed.
+
+Both `deploy` and `deploy:prod` run `npm run check` (typecheck + tests) first
+via npm pre-hooks and abort if anything fails.
+
 ## Stack
 
-- **Next.js 16** — App Router, API routes
+- **Next.js 16** — App Router, API routes, deployed to **Cloudflare Workers** via OpenNext
 - **BetterAuth** — email/password auth, session management
 - **Drizzle ORM** — type-safe queries
-- **Neon** — serverless Postgres
+- **Cloudflare D1** — serverless SQLite
 - **MCP SDK** — Model Context Protocol tools
 
 ## License

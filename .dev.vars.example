@@ -1,6 +1,8 @@
-# Database: none needed here — the app uses the Cloudflare D1 binding from
-# wrangler.jsonc (a local database during `next dev`). Create its tables with
-# `npm run db:migrate:local`.
+# Copy to .dev.vars — wrangler loads these as Worker env for
+# `npm run preview` / `wrangler dev`, and `initOpenNextCloudflareForDev` makes
+# them available during `next dev` too. In production, set the secret values
+# with `wrangler secret put <NAME>`; non-secret vars live in wrangler.jsonc.
+NEXTJS_ENV=development
 
 # BetterAuth
 BETTER_AUTH_SECRET="generate-with: openssl rand -base64 32"
@@ -8,8 +10,10 @@ BETTER_AUTH_SECRET="generate-with: openssl rand -base64 32"
 BETTER_AUTH_URL="http://localhost:3000"
 
 # App — this URL is the origin for the published auth.md / discovery documents
-# and the ID-JAG audience, so it must match the deployment.
-# Local dev: http://localhost:3000 — Production: https://agtls.dev
+# and the ID-JAG audience, so it must match the deployment. NOTE: as a
+# NEXT_PUBLIC_* var it is inlined into the client bundle at build time, so the
+# production value must be present when `opennextjs-cloudflare build` runs
+# (see .env.production).
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 # Agent auth (auth.md) — trusted agent providers for the agent-verified flow.
@@ -19,11 +23,10 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 # `{iss}/.well-known/jwks.json`.
 # AGENT_AUTH_TRUSTED_PROVIDERS='[{"iss":"https://auth.openai.com","name":"OpenAI"}]'
 
-# Scheduled messages — secret guarding POST /api/messages/dispatch (the endpoint
-# the Workers cron in worker.ts — or any external scheduler — calls to deliver
-# due messages). Callers must send it as `Authorization: Bearer <secret>`. Leave
-# unset to leave the endpoint open — fine for local dev, but set it in any
-# deployment (`wrangler secret put CRON_SECRET`).
+# Scheduled messages — secret guarding POST /api/messages/dispatch. The Worker
+# cron (worker.ts) sends it as `Authorization: Bearer <secret>`, as must any
+# external scheduler. Leave unset to leave the endpoint open — fine for local
+# dev, but set it in any deployment.
 # CRON_SECRET="generate-with: openssl rand -base64 32"
 
 # Social sign-in (optional). Leave a provider unset to hide its button on the

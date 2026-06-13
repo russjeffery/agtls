@@ -443,7 +443,7 @@ export const paths: Record<string, JSONSchema> = {
       tags: ["Messages"],
       summary: "Dispatch due messages",
       description:
-        "Delivers every scheduled message whose time has come. Intended to be called on an interval by a scheduler (e.g. a cron). If `CRON_SECRET` is configured, the caller must present it as `Authorization: Bearer <secret>`.",
+        "Delivers every scheduled message whose time has come. In production a Workers cron trigger calls this every minute; external schedulers can call it too, with GET or POST. If `CRON_SECRET` is configured, the caller must present it as `Authorization: Bearer <secret>`.",
       security: [{}, { bearerAuth: [] }],
       responses: {
         "200": {

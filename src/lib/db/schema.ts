@@ -1,16 +1,26 @@
-import {
-  pgTable,
-  text,
-  timestamp,
-  boolean,
-  jsonb,
-  integer,
-  pgEnum,
-} from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+
+// D1 is SQLite, so rich Postgres types are encoded onto SQLite's storage
+// classes: timestamps are integer epoch-milliseconds (mode "timestamp_ms"
+// round-trips Date), booleans are 0/1 integers, JSON values are serialized
+// into text (mode "json"), and enums are text columns constrained in app code
+// via the exported *Values tuples (also the source for the zod schemas).
+
+const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" });
+const boolean = (name: string) => integer(name, { mode: "boolean" });
+
+const createdNow = () =>
+  timestamp("created_at")
+    .notNull()
+    .$defaultFn(() => new Date());
+const updatedNow = () =>
+  timestamp("updated_at")
+    .notNull()
+    .$defaultFn(() => new Date());
 
 // ─── BetterAuth required tables ──────────────────────────────────────────────
 
-export const user = pgTable("user", {
+export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
@@ -20,7 +30,7 @@ export const user = pgTable("user", {
   updatedAt: timestamp("updated_at").notNull(),
 });
 
-export const session = pgTable("session", {
+export const session = sqliteTable("session", {
   id: text("id").primaryKey(),
   expiresAt: timestamp("expires_at").notNull(),
   token: text("token").notNull().unique(),
@@ -35,7 +45,7 @@ export const session = pgTable("session", {
   activeOrganizationId: text("active_organization_id"),
 });
 
-export const account = pgTable("account", {
+export const account = sqliteTable("account", {
   id: text("id").primaryKey(),
   accountId: text("account_id").notNull(),
   providerId: text("provider_id").notNull(),
@@ -53,7 +63,7 @@ export const account = pgTable("account", {
   updatedAt: timestamp("updated_at").notNull(),
 });
 
-export const verification = pgTable("verification", {
+export const verification = sqliteTable("verification", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
@@ -69,19 +79,19 @@ export const verification = pgTable("verification", {
 // `member` rows (agents are JIT-provisioned users), which is what lets a
 // signed-in human see every agent with access to the same resources.
 // Field shapes follow the plugin's expectations: `metadata` is a JSON string
-// (not jsonb), `invitation.expiresAt` is NOT NULL, and the invitation table
-// must exist even though we add agent members programmatically.
+// (not a JSON column), `invitation.expiresAt` is NOT NULL, and the invitation
+// table must exist even though we add agent members programmatically.
 
-export const organization = pgTable("organization", {
+export const organization = sqliteTable("organization", {
   id: text("id").primaryKey(), // newId, prefix "org_"
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   logo: text("logo"),
   metadata: text("metadata"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: createdNow(),
 });
 
-export const member = pgTable("member", {
+export const member = sqliteTable("member", {
   id: text("id").primaryKey(), // newId, prefix "mem_"
   organizationId: text("organization_id")
     .notNull()
@@ -90,10 +100,10 @@ export const member = pgTable("member", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   role: text("role").notNull().default("member"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: createdNow(),
 });
 
-export const invitation = pgTable("invitation", {
+export const invitation = sqliteTable("invitation", {
   id: text("id").primaryKey(), // newId, prefix "inv_"
   organizationId: text("organization_id")
     .notNull()
@@ -102,13 +112,13 @@ export const invitation = pgTable("invitation", {
   role: text("role"),
   status: text("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: createdNow(),
   inviterId: text("inviter_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
 });
 
-export const apiKey = pgTable("api_key", {
+export const apiKey = sqliteTable("api_key", {
   id: text("id").primaryKey(), // newId, prefix "key_"
   organizationId: text("organization_id")
     .notNull()
@@ -121,14 +131,14 @@ export const apiKey = pgTable("api_key", {
   // Credentials issued from the agent-auth flow carry an explicit scope set
   // and (for access_token credentials) an expiry. Legacy keys leave both null,
   // which resolveAuth treats as "never expires / full access".
-  scopes: jsonb("scopes").$type<string[]>(),
+  scopes: text("scopes", { mode: "json" }).$type<string[]>(),
   expiresAt: timestamp("expires_at"),
   // Agent-auth linkage — lets us tag keys in events and find them on revoke.
   createdByAgent: boolean("created_by_agent").notNull().default(false),
   agentRegistrationId: text("agent_registration_id"),
   lastUsedAt: timestamp("last_used_at"),
   revokedAt: timestamp("revoked_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: createdNow(),
 });
 
 // ─── Agent auth (auth.md) ─────────────────────────────────────────────────────
@@ -137,24 +147,24 @@ export const apiKey = pgTable("api_key", {
 // on-wire flows: agent-verified (ID-JAG), and the two user-claimed entrypoints
 // (anonymous start, service_auth). See src/lib/agent-auth/ and auth.md.
 
-export const agentRegistrationType = pgEnum("agent_registration_type", [
+export const agentRegistrationTypeValues = [
   "agent-provider", // agent-verified, via ID-JAG
   "anonymous", // user-claimed, anonymous start
   "service_auth", // user-claimed, agent supplies login_hint (email)
-]);
+] as const;
 
-export const agentRegistrationStatus = pgEnum("agent_registration_status", [
+export const agentRegistrationStatusValues = [
   "active", // agent-verified registration with a live credential
   "unclaimed", // user-claimed, awaiting OTP completion
   "claimed", // user-claimed, OTP completed and bound to a user
   "expired", // claim window elapsed before completion
   "revoked", // credential(s) invalidated (e.g. logout token)
-]);
+] as const;
 
-export const agentRegistration = pgTable("agent_registration", {
+export const agentRegistration = sqliteTable("agent_registration", {
   id: text("id").primaryKey(), // newId, prefix "reg_"
-  type: agentRegistrationType("type").notNull(),
-  status: agentRegistrationStatus("status").notNull(),
+  type: text("type", { enum: agentRegistrationTypeValues }).notNull(),
+  status: text("status", { enum: agentRegistrationStatusValues }).notNull(),
   requestedCredentialType: text("requested_credential_type")
     .$type<"access_token" | "api_key">()
     .notNull(),
@@ -166,8 +176,10 @@ export const agentRegistration = pgTable("agent_registration", {
   userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
   apiKeyId: text("api_key_id"),
   // Scope sets. Pre-claim is what an anonymous credential gets up front.
-  preClaimScopes: jsonb("pre_claim_scopes").$type<string[]>(),
-  postClaimScopes: jsonb("post_claim_scopes").$type<string[]>().notNull(),
+  preClaimScopes: text("pre_claim_scopes", { mode: "json" }).$type<string[]>(),
+  postClaimScopes: text("post_claim_scopes", { mode: "json" })
+    .$type<string[]>()
+    .notNull(),
   // Identity. email is the asserted/claim email; iss/sub/aud come from ID-JAG
   // and are what revocation logout tokens key off of.
   email: text("email"),
@@ -188,25 +200,25 @@ export const agentRegistration = pgTable("agent_registration", {
   claimedAt: timestamp("claimed_at"),
   // Audit trail.
   registrationIp: text("registration_ip"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: createdNow(),
+  updatedAt: updatedNow(),
 });
 
 // Replay cache for ID-JAG and logout-token `jti` values. A shared store is
 // required when /agent/auth runs across multiple replicas.
-export const agentAssertionJti = pgTable("agent_assertion_jti", {
+export const agentAssertionJti = sqliteTable("agent_assertion_jti", {
   jti: text("jti").primaryKey(),
   expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: createdNow(),
 });
 
 // Append-only audit log for agent-auth state transitions.
-export const agentAuditEvent = pgTable("agent_audit_event", {
+export const agentAuditEvent = sqliteTable("agent_audit_event", {
   id: text("id").primaryKey(), // newId, prefix "evt_"
   type: text("type").notNull(),
   registrationId: text("registration_id"),
-  data: jsonb("data").$type<Record<string, unknown>>(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  data: text("data", { mode: "json" }).$type<Record<string, unknown>>(),
+  createdAt: createdNow(),
 });
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
@@ -215,14 +227,9 @@ export const agentAuditEvent = pgTable("agent_audit_event", {
 // and cross-cutting organization happen through `labels`, which the list API
 // can filter on.
 
-export const taskPriority = pgEnum("task_priority", [
-  "low",
-  "medium",
-  "high",
-  "critical",
-]);
+export const taskPriorityValues = ["low", "medium", "high", "critical"] as const;
 
-export const task = pgTable("task", {
+export const task = sqliteTable("task", {
   id: text("id").primaryKey(), // newId, prefix "tsk_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
@@ -230,20 +237,22 @@ export const task = pgTable("task", {
   }),
   name: text("name").notNull(),
   description: text("description"),
-  priority: taskPriority("priority").notNull().default("low"),
+  priority: text("priority", { enum: taskPriorityValues })
+    .notNull()
+    .default("low"),
   dueAt: timestamp("due_at"),
-  labels: text("labels").array(),
+  labels: text("labels", { mode: "json" }).$type<string[]>(),
   // SHA-256 of the claim token issued on public creation; lets a later
   // authenticated caller take ownership via POST /api/claim/{id}. Cleared
   // once claimed. Null for resources created with auth.
   claimTokenHash: text("claim_token_hash"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: createdNow(),
+  updatedAt: updatedNow(),
 });
 
 // ─── Webhook Endpoints & Events ───────────────────────────────────────────────
 
-export const webhookEndpoint = pgTable("webhook_endpoint", {
+export const webhookEndpoint = sqliteTable("webhook_endpoint", {
   id: text("id").primaryKey(), // newId, prefix "wh_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
@@ -255,11 +264,11 @@ export const webhookEndpoint = pgTable("webhook_endpoint", {
   maxEvents: integer("max_events").default(100),
   // See task.claimTokenHash.
   claimTokenHash: text("claim_token_hash"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: createdNow(),
+  updatedAt: updatedNow(),
 });
 
-export const webhookEvent = pgTable("webhook_event", {
+export const webhookEvent = sqliteTable("webhook_event", {
   id: text("id").primaryKey(), // newId, prefix "whe_"
   endpointId: text("endpoint_id")
     .notNull()
@@ -270,13 +279,19 @@ export const webhookEvent = pgTable("webhook_event", {
   }),
   method: text("method").notNull(),
   path: text("path").notNull(),
-  headers: jsonb("headers").$type<Record<string, string>>().notNull(),
+  headers: text("headers", { mode: "json" })
+    .$type<Record<string, string>>()
+    .notNull(),
   body: text("body"), // raw body string
-  parsedBody: jsonb("parsed_body").$type<unknown>(), // JSON-parsed if applicable
-  queryParams: jsonb("query_params").$type<Record<string, string>>().notNull(),
+  parsedBody: text("parsed_body", { mode: "json" }).$type<unknown>(), // JSON-parsed if applicable
+  queryParams: text("query_params", { mode: "json" })
+    .$type<Record<string, string>>()
+    .notNull(),
   sourceIp: text("source_ip"),
   sizeBytes: integer("size_bytes"),
-  receivedAt: timestamp("received_at").notNull().defaultNow(),
+  receivedAt: timestamp("received_at")
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 // ─── Agent Artifacts ──────────────────────────────────────────────────────────
@@ -286,9 +301,9 @@ export const webhookEvent = pgTable("webhook_event", {
 // added later without reshaping the resource. GET /api/artifacts/{id}/raw
 // serves the content with the format's content type.
 
-export const artifactFormat = pgEnum("artifact_format", ["markdown", "html"]);
+export const artifactFormatValues = ["markdown", "html"] as const;
 
-export const artifact = pgTable("artifact", {
+export const artifact = sqliteTable("artifact", {
   id: text("id").primaryKey(), // newId, prefix "art_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
@@ -296,11 +311,13 @@ export const artifact = pgTable("artifact", {
   }),
   name: text("name").notNull(),
   content: text("content").notNull(),
-  format: artifactFormat("format").notNull().default("markdown"),
+  format: text("format", { enum: artifactFormatValues })
+    .notNull()
+    .default("markdown"),
   // See task.claimTokenHash.
   claimTokenHash: text("claim_token_hash"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: createdNow(),
+  updatedAt: updatedNow(),
 });
 
 // ─── Scheduled Messages ───────────────────────────────────────────────────────
@@ -309,33 +326,38 @@ export const artifact = pgTable("artifact", {
 // delayed dispatch. Today the only channel is `http` (send an HTTP request to a
 // URL at `scheduledAt`); `channel` exists so other channels (email, SMS, …) can
 // be added later. Delivery is performed by dispatchDueMessages() (see
-// src/lib/messages/dispatch.ts), driven by POST /api/messages/dispatch.
+// src/lib/messages/dispatch.ts), driven by the Worker cron trigger calling
+// POST /api/messages/dispatch.
 
-export const messageChannel = pgEnum("message_channel", ["http"]);
+export const messageChannelValues = ["http"] as const;
 
-export const messageStatus = pgEnum("message_status", [
+export const messageStatusValues = [
   "scheduled", // waiting for its scheduled time
   "delivering", // claimed by a dispatcher, in flight (guards against double-send)
   "delivered", // sent and accepted by the target (2xx)
   "failed", // sent but the target errored, or the request threw
   "canceled", // canceled before it fired
-]);
+] as const;
 
-export const scheduledMessage = pgTable("scheduled_message", {
+export const scheduledMessage = sqliteTable("scheduled_message", {
   id: text("id").primaryKey(), // newId, prefix "msg_"
   // null = public / anonymous resource
   organizationId: text("organization_id").references(() => organization.id, {
     onDelete: "cascade",
   }),
-  channel: messageChannel("channel").notNull().default("http"),
+  channel: text("channel", { enum: messageChannelValues })
+    .notNull()
+    .default("http"),
   // HTTP delivery target.
   url: text("url").notNull(),
   method: text("method").notNull().default("POST"),
-  headers: jsonb("headers").$type<Record<string, string>>(),
+  headers: text("headers", { mode: "json" }).$type<Record<string, string>>(),
   body: text("body"),
   // When the message should fire.
   scheduledAt: timestamp("scheduled_at").notNull(),
-  status: messageStatus("status").notNull().default("scheduled"),
+  status: text("status", { enum: messageStatusValues })
+    .notNull()
+    .default("scheduled"),
   attempts: integer("attempts").notNull().default(0),
   // Outcome of the most recent delivery attempt.
   responseStatus: integer("response_status"),
@@ -343,6 +365,6 @@ export const scheduledMessage = pgTable("scheduled_message", {
   deliveredAt: timestamp("delivered_at"),
   // See task.claimTokenHash.
   claimTokenHash: text("claim_token_hash"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: createdNow(),
+  updatedAt: updatedNow(),
 });
