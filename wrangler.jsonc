@@ -67,6 +67,21 @@
 		"BETTER_AUTH_URL": "https://agtls.dev",
 		"NEXT_PUBLIC_APP_URL": "https://agtls.dev"
 	},
+	"observability": {
+		"enabled": false,
+		"head_sampling_rate": 1,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"persist": true,
+			"invocation_logs": true
+		},
+		"traces": {
+			"enabled": false,
+			"persist": true,
+			"head_sampling_rate": 1
+		}
+	},
 	// Preview deployment: `npm run deploy:preview` → https://preview.agtls.dev.
 	// Separate worker, separate D1, separate secrets (set them with
 	// `wrangler secret put <NAME> --env preview`). NOINDEX makes worker.ts

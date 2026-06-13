@@ -43,6 +43,16 @@ export function claimViewUrl(viewToken: string): string {
   return `${appUrl()}/agent/claim/${viewToken}`;
 }
 
+/**
+ * Human-facing direct-claim page. Unlike `claimViewUrl` (the email/OTP
+ * ceremony), this link is handed straight to the human by the agent: they open
+ * it, sign up / sign in, and claim the agent in-session. See
+ * `getDirectClaimView` / `completeDirectClaim` in service.ts.
+ */
+export function claimLinkUrl(viewToken: string): string {
+  return `${appUrl()}/agent/link/${viewToken}`;
+}
+
 /** The `aud` value an ID-JAG must target to be accepted here. */
 export function expectedAudience(): string {
   return authServerUrl();

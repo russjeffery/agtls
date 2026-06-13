@@ -12,6 +12,7 @@ import {
   CLOCK_TOLERANCE_SECONDS,
   expectedAudience,
   claimViewUrl,
+  claimLinkUrl,
   claimUri,
   type CredentialType,
 } from "./config";
@@ -239,6 +240,10 @@ async function registerAnonymous(
   });
 
   const claimToken = newClaimToken();
+  // A second secret embedded in the human-facing claim link. Distinct from
+  // claimToken (the agent's clm_ secret) so the agent can paste the link to its
+  // human without handing over its own completion token.
+  const claimViewToken = newClaimViewToken();
   const now = new Date();
   const claimTokenExpiresAt = new Date(
     now.getTime() + REGISTRATION_TTL_SECONDS * 1000
@@ -256,6 +261,7 @@ async function registerAnonymous(
     postClaimScopes: postScopes,
     claimTokenHash: sha256(claimToken),
     claimTokenExpiresAt,
+    claimViewTokenHash: sha256(claimViewToken),
     registrationIp: ctx.ip ?? null,
     createdAt: now,
     updatedAt: now,
@@ -276,6 +282,8 @@ async function registerAnonymous(
     claim_url: claimUri(),
     claim_token: claimToken,
     claim_token_expires: iso(claimTokenExpiresAt),
+    // Hand this straight to your human — they open it, sign in, and claim you.
+    claim_link: claimLinkUrl(claimViewToken),
     post_claim_scopes: postScopes,
   };
 }
@@ -522,6 +530,160 @@ export async function generateOtpForView(
     serviceName: SERVICE_NAME,
     otp,
     email: reg.email,
+  };
+}
+
+// ─── Direct claim link (browser-session claim, no email/OTP) ──────────────────
+//
+// The agent hands its human a link (claimLinkUrl). The human opens it, signs up
+// / signs in, and confirms ownership in-session. No email round-trip and no OTP
+// read-back — the human's browser session is the proof of authorization, the
+// reverse trust direction of the email/OTP ceremony above. Only the anonymous
+// flow supports this: it already provisioned a JIT agent user + org + credential
+// at registration, so claiming is just an ownership transfer + scope upgrade.
+
+/**
+ * Mint (or rotate) a fresh human claim link for an already-registered anonymous
+ * credential, identified by the api key the caller authenticated with. Lets an
+ * agent that registered earlier — or lost the original link — get a new one.
+ * Throws AgentAuthError when the credential isn't an unclaimed anonymous one.
+ */
+export async function requestClaimLinkForCredential(
+  apiKeyId: string
+): Promise<Record<string, unknown>> {
+  const [reg] = await db
+    .select()
+    .from(agentRegistration)
+    .where(eq(agentRegistration.apiKeyId, apiKeyId))
+    .limit(1);
+
+  if (!reg || reg.type !== "anonymous") {
+    throw new AgentAuthError(
+      "invalid_request",
+      "This credential cannot generate a claim link."
+    );
+  }
+  if (reg.status === "claimed") {
+    throw new AgentAuthError("previously_claimed", "Already claimed.");
+  }
+  if (reg.status !== "unclaimed") {
+    throw new AgentAuthError(
+      "claimed_or_in_flight",
+      "This registration is no longer claimable."
+    );
+  }
+
+  const claimViewToken = newClaimViewToken();
+  const claimTokenExpiresAt = new Date(
+    Date.now() + REGISTRATION_TTL_SECONDS * 1000
+  );
+  await db
+    .update(agentRegistration)
+    .set({
+      claimViewTokenHash: sha256(claimViewToken),
+      claimTokenExpiresAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(agentRegistration.id, reg.id));
+
+  return {
+    registration_id: reg.id,
+    claim_link: claimLinkUrl(claimViewToken),
+    claim_token_expires: iso(claimTokenExpiresAt),
+  };
+}
+
+export interface DirectClaimView {
+  serviceName: string;
+}
+
+/**
+ * Read-only lookup for rendering the direct-claim page on GET. Mints nothing,
+ * so it's safe against link prefetchers. Returns null when the link is unknown,
+ * not an unclaimed anonymous registration, or expired.
+ */
+export async function getDirectClaimView(
+  viewToken: string
+): Promise<DirectClaimView | null> {
+  const [reg] = await db
+    .select({
+      type: agentRegistration.type,
+      status: agentRegistration.status,
+      claimTokenExpiresAt: agentRegistration.claimTokenExpiresAt,
+    })
+    .from(agentRegistration)
+    .where(eq(agentRegistration.claimViewTokenHash, sha256(viewToken)))
+    .limit(1);
+
+  if (!reg || reg.type !== "anonymous" || reg.status !== "unclaimed") {
+    return null;
+  }
+  if (reg.claimTokenExpiresAt && reg.claimTokenExpiresAt.getTime() <= Date.now()) {
+    return null;
+  }
+  return { serviceName: SERVICE_NAME };
+}
+
+/**
+ * Complete a direct claim: the signed-in human takes ownership of the agent's
+ * org (the agent stays a plain member), the credential is upgraded to post-claim
+ * scopes in place, and the registration is marked claimed. Throws AgentAuthError
+ * when the link is unknown/expired/already claimed.
+ */
+export async function completeDirectClaim(
+  viewToken: string,
+  humanUserId: string
+): Promise<Record<string, unknown>> {
+  const [reg] = await db
+    .select()
+    .from(agentRegistration)
+    .where(eq(agentRegistration.claimViewTokenHash, sha256(viewToken)))
+    .limit(1);
+
+  if (!reg || reg.type !== "anonymous") {
+    throw new AgentAuthError("invalid_claim_token", "Unknown claim link.");
+  }
+  if (reg.status === "claimed") {
+    throw new AgentAuthError("previously_claimed", "Already claimed.");
+  }
+  if (
+    reg.status !== "unclaimed" ||
+    (reg.claimTokenExpiresAt && reg.claimTokenExpiresAt.getTime() <= Date.now())
+  ) {
+    throw new AgentAuthError("claim_expired", "The claim link has expired.");
+  }
+
+  await recordAuditEvent("claim.requested", {
+    registrationId: reg.id,
+    data: { claimed_by_user_id: humanUserId, via: "claim_link" },
+  });
+
+  // The human takes over the agent's org; the agent stays in it as a plain
+  // member so the human sees it (and the agent) on their dashboard.
+  await transferOwnership(reg.organizationId!, humanUserId, reg.userId!);
+  if (reg.apiKeyId) {
+    await upgradeCredentialScopes(reg.apiKeyId, reg.postClaimScopes);
+  }
+
+  await db
+    .update(agentRegistration)
+    .set({
+      status: "claimed",
+      claimedByUserId: humanUserId,
+      claimedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(agentRegistration.id, reg.id));
+
+  await recordAuditEvent("claim.confirmed", {
+    registrationId: reg.id,
+    data: { claimed_by_user_id: humanUserId, via: "claim_link" },
+  });
+
+  return {
+    registration_id: reg.id,
+    organization_id: reg.organizationId,
+    status: "claimed",
   };
 }
 

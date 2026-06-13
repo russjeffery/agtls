@@ -6,7 +6,14 @@ import { authClient } from "@/lib/auth/client";
 // One client component covers both modes — the fields and authClient call are
 // the only differences between sign-in and sign-up.
 
-const AFTER_AUTH_URL = "/dashboard";
+const DEFAULT_AFTER_AUTH_URL = "/dashboard";
+
+// Carry a non-default post-auth redirect across the sign-in ⇄ sign-up toggle so
+// a claim link (or any ?next) survives switching modes.
+function withNext(href: string, redirectTo: string): string {
+  if (redirectTo === DEFAULT_AFTER_AUTH_URL) return href;
+  return `${href}?next=${encodeURIComponent(redirectTo)}`;
+}
 
 const mono = "var(--font-spline-mono, ui-monospace, monospace)";
 
@@ -54,9 +61,11 @@ function GoogleMark() {
 function SocialButtons({
   providers,
   setError,
+  afterAuthUrl,
 }: {
   providers: string[];
   setError: (msg: string | null) => void;
+  afterAuthUrl: string;
 }) {
   if (providers.length === 0) return null;
 
@@ -64,7 +73,7 @@ function SocialButtons({
     setError(null);
     const { error } = await authClient.signIn.social({
       provider,
-      callbackURL: AFTER_AUTH_URL,
+      callbackURL: afterAuthUrl,
     });
     if (error) setError(error.message ?? "Something went wrong.");
   };
@@ -117,9 +126,12 @@ function SocialButtons({
 export function AuthForm({
   mode,
   providers,
+  redirectTo = DEFAULT_AFTER_AUTH_URL,
 }: {
   mode: "sign-in" | "sign-up";
   providers: string[];
+  /** Where to land after a successful auth. Defaults to /dashboard. */
+  redirectTo?: string;
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -140,7 +152,7 @@ export function AuthForm({
       setError(error.message ?? "Something went wrong.");
       return;
     }
-    window.location.href = AFTER_AUTH_URL;
+    window.location.href = redirectTo;
   };
 
   return (
@@ -153,7 +165,11 @@ export function AuthForm({
         boxShadow: "inset 0 1px 0 oklch(1 0 0 / 0.05)",
       }}
     >
-      <SocialButtons providers={providers} setError={setError} />
+      <SocialButtons
+        providers={providers}
+        setError={setError}
+        afterAuthUrl={redirectTo}
+      />
 
       <form onSubmit={submit} className="flex flex-col gap-4">
         {mode === "sign-up" && (
@@ -238,14 +254,14 @@ export function AuthForm({
         {mode === "sign-up" ? (
           <>
             Already have an account?{" "}
-            <a href="/sign-in" style={{ color: "var(--ds-accent)" }}>
+            <a href={withNext("/sign-in", redirectTo)} style={{ color: "var(--ds-accent)" }}>
               Sign in
             </a>
           </>
         ) : (
           <>
             New here?{" "}
-            <a href="/sign-up" style={{ color: "var(--ds-accent)" }}>
+            <a href={withNext("/sign-up", redirectTo)} style={{ color: "var(--ds-accent)" }}>
               Create an account
             </a>
           </>

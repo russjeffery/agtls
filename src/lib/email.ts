@@ -1,10 +1,10 @@
 // Pluggable email transport.
 //
-// Production deployments should wire a real provider here (Resend, SES, SMTP,
-// etc.). With no provider configured we fall back to logging the message —
-// adequate for local development, where the claim link / OTP can be copied
-// straight from the server console. The OTP ceremony logic is identical
-// regardless of transport.
+// Uses Resend when RESEND_API_KEY is set. Without it we fall back to logging —
+// adequate for local development where the claim link / OTP can be copied
+// straight from the server console.
+
+import { Resend } from "resend";
 
 export interface EmailMessage {
   to: string;
@@ -15,10 +15,12 @@ export interface EmailMessage {
 
 type Sender = (msg: EmailMessage) => Promise<void>;
 
+const FROM_ADDRESS = "noreply@agtls.dev";
+const FROM_NAME = "Agent Tools";
+
 const consoleSender: Sender = async (msg) => {
   // E2E hook: when AGTLS_TEST_EMAIL_FILE is set, append each message as JSON
-  // so the browser tests can read back the claim link / OTP. This is the same
-  // module instance the app uses, so the capture is guaranteed to apply.
+  // so the browser tests can read back the claim link / OTP.
   const captureFile = process.env.AGTLS_TEST_EMAIL_FILE;
   if (captureFile) {
     const { appendFile } = await import("node:fs/promises");
@@ -29,19 +31,43 @@ const consoleSender: Sender = async (msg) => {
     return;
   }
   console.log(
-    `\n[email] (dev fallback — no provider configured)\n  to:      ${msg.to}\n  subject: ${msg.subject}\n  ${msg.text}\n`
+    `\n[email] (dev fallback — no RESEND_API_KEY)\n  to:      ${msg.to}\n  subject: ${msg.subject}\n  ${msg.text}\n`
   );
 };
 
-// A real sender can be injected by assigning to this binding at startup.
-let sender: Sender = consoleSender;
+function makeResendSender(apiKey: string): Sender {
+  const resend = new Resend(apiKey);
+  return async (msg) => {
+    const { error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+      to: msg.to,
+      subject: msg.subject,
+      text: msg.text,
+      html: msg.html,
+    });
+    if (error) throw new Error(`Resend error: ${error.message}`);
+  };
+}
+
+// Lazily initialised so the API key is read per-request (env vars are
+// available at call time in both Next.js and Workers via process.env).
+let cachedSender: Sender | null = null;
+
+// A custom sender can be injected to override Resend (useful in tests).
+let senderOverride: Sender | null = null;
 
 export function setEmailSender(custom: Sender): void {
-  sender = custom;
+  senderOverride = custom;
 }
 
 export async function sendEmail(msg: EmailMessage): Promise<void> {
-  await sender(msg);
+  if (senderOverride) return senderOverride(msg);
+
+  if (!cachedSender) {
+    const key = process.env.RESEND_API_KEY;
+    cachedSender = key ? makeResendSender(key) : consoleSender;
+  }
+  await cachedSender(msg);
 }
 
 /** Claim email: links the user to the server-rendered OTP page. */

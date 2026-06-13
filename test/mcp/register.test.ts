@@ -12,7 +12,7 @@ type ToolHandler = (
   extra: Record<string, unknown>
 ) => Promise<{ content: { text: string }[]; isError?: boolean }>;
 
-function captureRegisterTool(): ToolHandler {
+function captureTools(): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
   const fakeServer = {
     tool: (name: string, _desc: string, _schema: unknown, cb: ToolHandler) => {
@@ -20,7 +20,11 @@ function captureRegisterTool(): ToolHandler {
     },
   };
   registerTools(fakeServer as never);
-  const handler = handlers.get("agent_register");
+  return handlers;
+}
+
+function captureRegisterTool(): ToolHandler {
+  const handler = captureTools().get("agent_register");
   if (!handler) throw new Error("agent_register tool was not registered");
   return handler;
 }
@@ -42,6 +46,8 @@ describe("MCP agent_register tool", () => {
     expect(body.credential).toMatch(/^agt_/);
     expect(body.scopes).toEqual(["api.read"]);
     expect(body.claim_token).toMatch(/^clm_/);
+    // The shareable link the agent hands to its human.
+    expect(body.claim_link).toMatch(/\/agent\/link\/cvt_/);
     expect(body.next_steps).toBeTruthy();
     // Anonymous registration issues the credential up front — no email needed.
     expect(sentEmails()).toHaveLength(0);
@@ -59,5 +65,26 @@ describe("MCP agent_register tool", () => {
     // No credential until the user approves and the claim completes.
     expect(body.credential).toBeUndefined();
     expect(sentEmails()).toHaveLength(1);
+  });
+});
+
+describe("MCP agent_request_claim_link tool", () => {
+  it("mints a fresh claim_link for an anonymous credential passed as api_key", async () => {
+    const handlers = captureTools();
+    const register = handlers.get("agent_register")!;
+    const requestLink = handlers.get("agent_request_claim_link")!;
+
+    const reg = parse(await register({}, {}));
+    const result = await requestLink({ api_key: reg.credential }, {});
+    expect(result.isError).toBeFalsy();
+
+    const body = parse(result);
+    expect(body.claim_link).toMatch(/\/agent\/link\/cvt_/);
+  });
+
+  it("errors without an api_key", async () => {
+    const requestLink = captureTools().get("agent_request_claim_link")!;
+    const result = await requestLink({}, {});
+    expect(result.isError).toBe(true);
   });
 });
