@@ -68,14 +68,14 @@ export function buildOpenApiDocument(): Record<string, unknown> {
   return {
     openapi: "3.1.0",
     info: {
-      title: "agtls API",
+      title: "Agent Tools API",
       version: pkg.version,
       description:
         "Open infrastructure for AI agents. API key auth is optional: without a key, " +
         "resources are created public (reachable by ID) and can later be claimed; with an " +
         "`agt_live_…` key, resources are owned by the key's organization. All timestamps are " +
         "Unix seconds. Lists use cursor pagination (`limit`, `after`).",
-      license: { name: "MIT", identifier: "MIT" },
+      // license: { name: "MIT", identifier: "MIT" },
     },
     servers: [{ url: appUrl }],
     security: [{}, { bearerAuth: [] }],
