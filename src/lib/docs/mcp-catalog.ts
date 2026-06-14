@@ -28,8 +28,7 @@ export interface ToolGroup {
 const CATEGORY_LABELS: Record<string, string> = {
   agent: "Agent auth",
   tasks: "Tasks",
-  webhook_endpoints: "Webhook endpoints",
-  webhook_events: "Webhook events",
+  webhooks: "Webhooks",
   artifact: "Artifacts",
   messages: "Messages",
   claim: "Claim",
@@ -39,15 +38,15 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_ORDER = [
   "agent",
   "tasks",
-  "webhook_endpoints",
-  "webhook_events",
+  "webhooks",
   "artifact",
   "messages",
   "claim",
 ];
 
 function categoryFor(toolName: string): string {
-  // Longest known prefix wins (webhook_endpoints before webhook).
+  // A tool belongs to the category whose key it matches or is prefixed by
+  // (e.g. tasks_read -> tasks, webhooks_write -> webhooks, agent_auth -> agent).
   for (const key of CATEGORY_ORDER) {
     if (toolName === key || toolName.startsWith(`${key}_`)) return key;
   }

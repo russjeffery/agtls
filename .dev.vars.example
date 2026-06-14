@@ -31,7 +31,7 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 # Email — set to send real emails via Resend during `npm run preview`.
 # In production, set with `wrangler secret put RESEND_API_KEY`.
-RESEND_API_KEY="re_xxx"
+# RESEND_API_KEY="re_xxx"
 
 # Social sign-in (optional). Leave a provider unset to hide its button on the
 # sign-in/sign-up pages. Callback URLs to register with the provider:

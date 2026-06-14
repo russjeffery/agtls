@@ -94,7 +94,7 @@ export function authorizationServerMetadata() {
     scopes_supported: [...SCOPES_SUPPORTED],
     bearer_methods_supported: ["header"],
     agent_auth: {
-      skill: "https://workos.com/auth.md",
+      skill: `${origin()}/auth.md`,
       register_uri: registerUri(),
       claim_uri: claimUri(),
       revocation_uri: revocationUri(),
@@ -347,7 +347,7 @@ Authorization: Bearer agt_...
   \`{ "error": { "type", "code", "message" } }\` envelope.
 - MCP: connect to \`${base}/api/mcp\` (streamable HTTP) with the same
   \`Authorization: Bearer\` header. You can also register entirely over MCP via
-  the \`agent_register\` tool.
+  the \`agent_auth\` tool (\`action: register\`).
 - Agent skill (full runbook for using the API): \`${base}/skill.md\`
 
 \`api_key\` credentials do not expire; \`access_token\` credentials do. If a
@@ -454,8 +454,8 @@ REST base: \`${base}/api\` — JSON in/out, errors in a
 
 MCP: connect to \`${base}/api/mcp\` (streamable HTTP) with the same
 \`Authorization: Bearer\` header. The same operations are exposed as tools. You
-can also register entirely over MCP — call the \`agent_register\` tool (no
-header needed) to get your \`credential\`, then pass it as the \`api_key\`
+can also register entirely over MCP — call the \`agent_auth\` tool
+(\`action: register\`, no header needed) to get your \`credential\`, then pass it as the \`api_key\`
 argument on every other tool call so your work is saved to your account.
 
 ## 3. Working without any credential

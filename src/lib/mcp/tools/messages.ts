@@ -1,36 +1,20 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, desc, and } from "drizzle-orm";
-import { beforeCursor } from "@/lib/api/cursor";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { scheduledMessage } from "@/lib/db/schema";
-import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
 import { serializeScheduledMessage } from "@/lib/api/serialize";
 import { mintResourceClaimToken } from "@/lib/api/claim";
-
-// ─── Auth helper ─────────────────────────────────────────────────────────────
-
-async function getAuth(apiKey?: string) {
-  if (!apiKey) return null;
-  const fakeRequest = new Request("https://localhost/", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  return resolveAuth(fakeRequest);
-}
-
-function canAccess(
-  row: typeof scheduledMessage.$inferSelect,
-  auth: { organizationId: string } | null
-): boolean {
-  if (row.organizationId === null) return true;
-  if (!auth) return false;
-  return auth.organizationId === row.organizationId;
-}
-
-function errorText(msg: string) {
-  return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
-}
+import type { AuthContext } from "@/lib/api/middleware";
+import {
+  getAuth,
+  mcpError,
+  mcpOk,
+  canAccess,
+  clampLimit,
+  paginatedList,
+} from "./shared";
 
 function isHttpUrl(url: string): boolean {
   try {
@@ -42,154 +26,125 @@ function isHttpUrl(url: string): boolean {
 }
 
 export function messageTools(server: McpServer): void {
-  // ── messages_list ───────────────────────────────────────────────────────────
+  // ── messages_read ─────────────────────────────────────────────────────────────
   server.tool(
-    "messages_list",
-    "List scheduled messages owned by the authenticated organization, most recently created first. Returns an empty list if no API key is provided.",
+    "messages_read",
+    "Read scheduled messages. Pass an `id` to fetch a single message (with its " +
+      "delivery status), or omit it to list messages. Anonymous callers can't list, " +
+      "but can fetch a public message by ID.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      limit: z.number().int().min(1).max(100).optional().default(20).describe("Number of results (1–100, default 20)."),
-      after: z.string().optional().describe("Cursor: ID of the last message from the previous page."),
+      id: z.string().optional().describe("Message ID — when set, returns that single message."),
+      limit: z.number().int().min(1).max(100).optional().describe("List size (1–100, default 20)."),
+      after: z.string().optional().describe("List cursor: ID of the last message from the previous page."),
     },
-    async ({ api_key, limit = 20, after }) => {
-      let auth;
+    async (args, extra) => {
+      let auth: AuthContext | null;
       try {
-        auth = await getAuth(api_key);
+        auth = await getAuth(args.api_key, extra);
       } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
+        return mcpError(e instanceof Error ? e.message : "Invalid API key.");
+      }
+
+      if (args.id) {
+        const [row] = await db
+          .select()
+          .from(scheduledMessage)
+          .where(eq(scheduledMessage.id, args.id))
+          .limit(1);
+        if (!row) return mcpError(`No scheduled message with ID '${args.id}' exists.`);
+        if (!canAccess(row.organizationId, auth?.organizationId)) {
+          return mcpError("You do not have access to this resource.");
+        }
+        return mcpOk(serializeScheduledMessage(row));
       }
 
       if (!auth) {
-        const empty = { object: "list", data: [], has_more: false, next_cursor: null };
-        return { content: [{ type: "text" as const, text: JSON.stringify(empty, null, 2) }] };
-      }
-      const ownershipCondition = eq(scheduledMessage.organizationId, auth.organizationId);
-
-      let cursorCondition;
-      if (after) {
-        const cursor = await db
-          .select({ createdAt: scheduledMessage.createdAt })
-          .from(scheduledMessage)
-          .where(eq(scheduledMessage.id, after))
-          .limit(1);
-        if (cursor.length > 0) {
-          cursorCondition = beforeCursor(
-            scheduledMessage.createdAt,
-            scheduledMessage.id,
-            cursor[0].createdAt,
-            after
-          );
-        }
+        return mcpOk({ object: "list", data: [], has_more: false, next_cursor: null });
       }
 
-      const conditions = cursorCondition
-        ? and(ownershipCondition, cursorCondition)
-        : ownershipCondition;
-
-      const rows = await db
-        .select()
-        .from(scheduledMessage)
-        .where(conditions)
-        .orderBy(desc(scheduledMessage.createdAt), desc(scheduledMessage.id))
-        .limit(limit + 1);
-
-      const hasMore = rows.length > limit;
-      const data = rows.slice(0, limit).map((r) => serializeScheduledMessage(r));
-
-      const result = {
-        object: "list",
-        data,
-        has_more: hasMore,
-        next_cursor: hasMore ? data[data.length - 1].id : null,
-      };
-
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      return mcpOk(
+        await paginatedList({
+          table: scheduledMessage,
+          timeColumn: scheduledMessage.createdAt,
+          idColumn: scheduledMessage.id,
+          where: eq(scheduledMessage.organizationId, auth.organizationId),
+          serialize: serializeScheduledMessage,
+          limit: clampLimit(args.limit),
+          after: args.after,
+        })
+      );
     }
   );
 
-  // ── messages_get ────────────────────────────────────────────────────────────
+  // ── messages_write ────────────────────────────────────────────────────────────
   server.tool(
-    "messages_get",
-    "Get a single scheduled message by ID, including its delivery status.",
+    "messages_write",
+    "Schedule or cancel a message. `schedule` fires an HTTP request at a URL at a " +
+      "future time — provide either `scheduled_at` (absolute Unix seconds) or " +
+      "`delay_seconds` (relative to now). `cancel` deletes a scheduled message " +
+      "(requires `id`); if it hasn't fired yet, it never will.",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The message ID (e.g. msg_...)."),
-    },
-    async ({ api_key, id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const rows = await db
-        .select()
-        .from(scheduledMessage)
-        .where(eq(scheduledMessage.id, id))
-        .limit(1);
-      if (rows.length === 0) {
-        return errorText(`No scheduled message with ID '${id}' exists.`);
-      }
-      if (!canAccess(rows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(serializeScheduledMessage(rows[0]), null, 2) },
-        ],
-      };
-    }
-  );
-
-  // ── messages_schedule ───────────────────────────────────────────────────────
-  server.tool(
-    "messages_schedule",
-    "Schedule a message to trigger an agent later by firing an HTTP request to a URL. Provide either scheduled_at (absolute Unix seconds) or delay_seconds (relative to now). Delivery is performed by the dispatcher when the time arrives.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      url: z.string().min(1).max(2000).describe("Target URL (http/https) to send the request to."),
+      action: z.enum(["schedule", "cancel"]).describe("The operation to perform."),
+      id: z.string().optional().describe("Message ID (required for cancel)."),
+      url: z.string().min(1).max(2000).optional().describe("Target URL (http/https) to send the request to (required for schedule)."),
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional().describe("HTTP method (default POST)."),
       headers: z.record(z.string(), z.string()).optional().describe("Optional request headers."),
       body: z.string().max(1_000_000).optional().describe("Optional request body (sent for non-GET methods)."),
       scheduled_at: z.number().int().optional().describe("Absolute fire time, Unix seconds."),
       delay_seconds: z.number().int().min(0).optional().describe("Fire this many seconds from now."),
     },
-    async ({ api_key, url, method, headers, body, scheduled_at, delay_seconds }) => {
-      let auth;
+    async (args, extra) => {
+      let auth: AuthContext | null;
       try {
-        auth = await getAuth(api_key);
+        auth = await getAuth(args.api_key, extra);
       } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
+        return mcpError(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      if (!isHttpUrl(url)) {
-        return errorText("url must be an http or https URL.");
+      // ── cancel ──
+      if (args.action === "cancel") {
+        if (!args.id) return mcpError("`id` is required to cancel a message.");
+
+        const [row] = await db
+          .select()
+          .from(scheduledMessage)
+          .where(eq(scheduledMessage.id, args.id))
+          .limit(1);
+        if (!row) return mcpError(`No scheduled message with ID '${args.id}' exists.`);
+        if (!canAccess(row.organizationId, auth?.organizationId)) {
+          return mcpError("You do not have access to this resource.");
+        }
+
+        await db.delete(scheduledMessage).where(eq(scheduledMessage.id, args.id));
+        return mcpOk({ id: args.id, object: "scheduled_message", canceled: true });
       }
-      if (scheduled_at === undefined && delay_seconds === undefined) {
-        return errorText("Provide either scheduled_at (Unix seconds) or delay_seconds.");
+
+      // ── schedule ──
+      if (!args.url) return mcpError("`url` is required to schedule a message.");
+      if (!isHttpUrl(args.url)) return mcpError("url must be an http or https URL.");
+      if (args.scheduled_at === undefined && args.delay_seconds === undefined) {
+        return mcpError("Provide either scheduled_at (Unix seconds) or delay_seconds.");
       }
 
       const now = new Date();
       const scheduledAt =
-        scheduled_at !== undefined
-          ? new Date(scheduled_at * 1000)
-          : new Date(now.getTime() + (delay_seconds ?? 0) * 1000);
+        args.scheduled_at !== undefined
+          ? new Date(args.scheduled_at * 1000)
+          : new Date(now.getTime() + (args.delay_seconds ?? 0) * 1000);
 
-      const id = newId("scheduledMessage");
       const claim = auth ? null : mintResourceClaimToken();
-
       const [row] = await db
         .insert(scheduledMessage)
         .values({
-          id,
+          id: newId("scheduledMessage"),
           organizationId: auth ? auth.organizationId : null,
           channel: "http",
-          url,
-          method: method ?? "POST",
-          headers: headers ?? null,
-          body: body ?? null,
+          url: args.url,
+          method: args.method ?? "POST",
+          headers: args.headers ?? null,
+          body: args.body ?? null,
           scheduledAt,
           status: "scheduled",
           claimTokenHash: claim?.hash ?? null,
@@ -198,47 +153,11 @@ export function messageTools(server: McpServer): void {
         })
         .returning();
 
-      const data = claim
-        ? { ...serializeScheduledMessage(row), claim_token: claim.token }
-        : serializeScheduledMessage(row);
-
-      return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
-    }
-  );
-
-  // ── messages_cancel ─────────────────────────────────────────────────────────
-  server.tool(
-    "messages_cancel",
-    "Cancel and delete a scheduled message. If it hasn't fired yet, it never will.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The message ID to cancel."),
-    },
-    async ({ api_key, id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const rows = await db
-        .select()
-        .from(scheduledMessage)
-        .where(eq(scheduledMessage.id, id))
-        .limit(1);
-      if (rows.length === 0) {
-        return errorText(`No scheduled message with ID '${id}' exists.`);
-      }
-      if (!canAccess(rows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      await db.delete(scheduledMessage).where(eq(scheduledMessage.id, id));
-
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify({ canceled: true, id }, null, 2) }],
-      };
+      return mcpOk(
+        claim
+          ? { ...serializeScheduledMessage(row), claim_token: claim.token }
+          : serializeScheduledMessage(row)
+      );
     }
   );
 }
