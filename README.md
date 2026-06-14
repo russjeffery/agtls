@@ -10,8 +10,6 @@ Open infrastructure for AI agents. Task lists, webhook catchers, artifacts, sche
 | Webhook Catcher | `/api/webhooks`, `/api/catch/:id` | `webhook_*` | ✅ |
 | Artifacts | `/api/artifacts` | `artifact_*` | ✅ |
 | Scheduled Messages | `/api/messages`, `/api/messages/dispatch` | `messages_*` | ✅ |
-| Pub/Sub | `/api/channels` | `pubsub_*` | 🔜 |
-| Gist | `/api/gists` | `gist_*` | 🔜 |
 
 ## MCP endpoint
 
