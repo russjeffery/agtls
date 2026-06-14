@@ -52,7 +52,7 @@ export function FieldList({ fields, title }: { fields: Field[]; title?: string }
             <dd
               className="m-0 min-w-0 break-words"
               style={{
-                fontFamily: f.mono ? mono : "var(--font-newsreader, serif)",
+                fontFamily: f.mono ? mono : "var(--font-hanken, serif)",
                 fontSize: f.mono ? 13 : 15,
                 color:
                   f.value === null || f.value === undefined || f.value === ""

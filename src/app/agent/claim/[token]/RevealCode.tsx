@@ -35,7 +35,7 @@ export function RevealCode({ token }: { token: string }) {
         </p>
         <p
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
+            fontFamily: "var(--font-hanken, serif)",
             fontSize: 14,
             color: "var(--text-muted)",
             margin: 0,
@@ -55,7 +55,7 @@ export function RevealCode({ token }: { token: string }) {
       {state && !state.ok ? (
         <p
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
+            fontFamily: "var(--font-hanken, serif)",
             fontSize: 14,
             color: "var(--danger-400)",
             margin: "0 0 16px",

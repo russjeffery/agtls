@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Logo } from "@/components/logo";
 
 /** Centered single-column chrome shared by the sign-in and sign-up pages. */
 export function AuthShell({
@@ -16,23 +15,46 @@ export function AuthShell({
       className="min-h-screen flex flex-col items-center px-5 py-14"
       style={{
         background: `
-          radial-gradient(700px 400px at 50% -5%, oklch(0.835 0.175 153 / 0.07), transparent 60%),
+          radial-gradient(700px 400px at 50% -5%, rgba(32, 24, 255, 0.08), transparent 60%),
           var(--bg-app)
         `,
       }}
     >
-      <Link href="/" className="inline-flex no-underline mb-10">
-        <Logo height={26} />
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2.5 no-underline mb-10"
+        style={{
+          fontFamily: "var(--font-archivo, system-ui, sans-serif)",
+          fontWeight: 800,
+          fontSize: 20,
+          letterSpacing: "0.01em",
+          color: "var(--text-strong)",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{ width: 12, height: 12, background: "var(--ds-accent)" }}
+        />
+        AGTLS
       </Link>
 
-      <div className="w-full" style={{ maxWidth: 420 }}>
+      <div
+        className="w-full"
+        style={{
+          maxWidth: 420,
+          border: "2px solid var(--text-strong)",
+          background: "var(--surface-card)",
+          padding: 28,
+        }}
+      >
         <h1
-          className="text-center"
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
-            fontSize: 34,
-            fontWeight: 500,
+            fontFamily: "var(--font-archivo, system-ui, sans-serif)",
+            fontSize: 38,
+            fontWeight: 800,
+            lineHeight: 1,
             letterSpacing: "-0.02em",
+            textTransform: "uppercase",
             color: "var(--text-strong)",
             margin: "0 0 8px",
           }}
@@ -40,13 +62,12 @@ export function AuthShell({
           {title}
         </h1>
         <p
-          className="text-center"
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
-            fontSize: 16,
-            lineHeight: 1.55,
+            fontFamily: "var(--font-hanken, sans-serif)",
+            fontSize: 15.5,
+            lineHeight: 1.5,
             color: "var(--text-muted)",
-            margin: "0 0 28px",
+            margin: "0 0 26px",
           }}
         >
           {subtitle}

@@ -48,7 +48,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h2
       className="m-0 mb-4"
       style={{
-        fontFamily: "var(--font-newsreader, serif)",
+        fontFamily: "var(--font-hanken, serif)",
         fontSize: 21,
         fontWeight: 500,
         color: "var(--text-strong)",
@@ -205,7 +205,7 @@ export function AccountSettings({
             <p
               className="m-0 mb-2 text-sm"
               style={{
-                fontFamily: "var(--font-newsreader, serif)",
+                fontFamily: "var(--font-hanken, serif)",
                 color: "var(--text-muted)",
               }}
             >

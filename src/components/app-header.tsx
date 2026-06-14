@@ -1,19 +1,29 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { Logo } from "@/components/logo";
 import { AccountMenu } from "@/components/account-menu";
+import { ToolsMenu } from "@/components/tools-nav";
+import { Logo } from "./logo";
 
-const NAV_LINKS = [
-  { label: "Tasks", href: "/tasks" },
-  { label: "Webhooks", href: "/webhooks" },
-  { label: "Artifacts", href: "/artifacts" },
-  { label: "Messages", href: "/messages" },
-  { label: "Orgs", href: "/organizations" },
-];
+const archivo = "var(--font-archivo, system-ui, sans-serif)";
+const mono = "var(--font-spline-mono, ui-monospace, monospace)";
+
+const navLinkStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 18px",
+  borderLeft: "1px solid var(--line-1)",
+  color: "var(--text-body)",
+  textDecoration: "none",
+  fontFamily: mono,
+  fontSize: 12,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+};
 
 /**
- * Sticky site header for app pages (dashboard, keys, account). Shows the
- * account dropdown when signed in, sign-in/sign-up otherwise.
+ * Sticky datasheet header shared across the signed-in app (dashboard, keys,
+ * account, and the resource pages). Mirrors the landing page identity:
+ * concrete ground, heavy rules, Archivo wordmark, electric-blue action.
  */
 export function AppHeader({
   user,
@@ -22,54 +32,70 @@ export function AppHeader({
 }) {
   return (
     <header
-      className="sticky top-0 z-30 flex items-center gap-7 px-8 py-3.5 border-b"
+      className="sticky top-0 z-40 flex items-stretch"
       style={{
-        background: "oklch(0.168 0.006 248 / 0.72)",
-        backdropFilter: "blur(14px)",
-        borderColor: "var(--line-1)",
-        fontFamily: "var(--font-spline-mono, ui-monospace, monospace)",
+        borderBottom: "2px solid var(--text-strong)",
+        background: "color-mix(in oklab, var(--bg-app) 86%, transparent)",
+        backdropFilter: "blur(8px)",
       }}
     >
-      <Link href="/" className="inline-flex no-underline">
-        <Logo height={36} />
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2.5 no-underline"
+        style={{
+          padding: "15px 22px",
+          borderRight: "2px solid var(--text-strong)",
+          fontFamily: archivo,
+          fontWeight: 800,
+          fontSize: 20,
+          letterSpacing: "0.01em",
+          color: "var(--text-strong)",
+        }}
+      >
+        <Logo height={40} />
+        {/* <span
+          aria-hidden
+          style={{ width: 12, height: 12, background: "var(--ds-accent)" }}
+        />
+        AGTLS */}
       </Link>
-      <nav className="flex gap-5 ml-3">
-        {NAV_LINKS.map((item) => (
-          <a
-            key={item.label}
-            href={item.href}
-            className="text-sm transition-colors no-underline"
-            style={{ color: "var(--text-muted)" }}
-          >
-            {item.label}
-          </a>
-        ))}
-      </nav>
-      <div className="ml-auto flex items-center gap-5">
-        {user ? (
-          <AccountMenu user={user} />
-        ) : (
-          <>
-            <a
-              href="/sign-in"
-              className="text-sm no-underline transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Sign in
-            </a>
+
+      <nav className="flex items-stretch ml-auto" style={{ fontFamily: mono }}>
+        <div
+          className="flex items-stretch"
+          style={{ borderLeft: "1px solid var(--line-1)" }}
+        >
+          <ToolsMenu />
+        </div>
+        <Link style={navLinkStyle} href="/docs">
+          Docs
+        </Link>
+        <div
+          className="flex items-center"
+          style={{ padding: "0 16px", borderLeft: "2px solid var(--text-strong)" }}
+        >
+          {user ? (
+            <AccountMenu user={user} />
+          ) : (
             <a
               href="/sign-up"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded no-underline transition-colors"
+              className="inline-flex items-center gap-1.5"
               style={{
-                background: "var(--ds-accent)",
                 color: "var(--text-on-accent)",
+                background: "var(--ds-accent)",
+                textDecoration: "none",
+                fontFamily: mono,
+                fontSize: 12,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                padding: "9px 14px",
               }}
             >
-              Get API key <ArrowRight size={14} />
+              Get API key <ArrowRight size={13} />
             </a>
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      </nav>
     </header>
   );
 }

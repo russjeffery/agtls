@@ -1,42 +1,28 @@
 export function Logo({ height = 32 }: { height?: number }) {
-  const width = (height / 48) * 240;
+  const width = (height / 80) * 352;
   return (
-    <svg
-      width={width}
-      height={height}
-      viewBox="0 0 240 48"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      role="img"
-      aria-label="Agent Tools"
-    >
-      <style>{`
-        .cursor { animation: blink 1.2s infinite steps(2); }
-        .brand-mark { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-        svg:hover .brand-mark { transform: scale(1.05); }
-        svg:hover .anim-path { stroke: #f4f6f5; }
-        svg:hover .t { stroke: #5fd089; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-      `}</style>
+    <>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 352 80" width={width} height={height} shapeRendering="crispEdges">
+        <rect width="352" height="80" fill="#d6d4c8" />
 
-      <g className="brand-mark" style={{ transformOrigin: "24px 24px" }}>
-        <path className="anim-path" d="M 13 36 L 24 12 L 35 36" stroke="#5fd089" strokeWidth="4" strokeLinecap="butt" strokeLinejoin="miter" />
-        <path className="t" d="M 18 24 L 30 24" stroke="#fff" strokeWidth="4" strokeLinecap="butt" strokeLinejoin="miter" />
-        <path className="t" d="M 24 24 L 24 36" stroke="#fff" strokeWidth="4" strokeLinecap="butt" strokeLinejoin="miter" />
-        {/* <rect className="cursor" x="22" y="16.5" width="4" height="4" fill="#f4f6f5" /> */}
-      </g>
+        <path d="M 32,20 H 72 V 48 H 60 V 60 H 32 Z" fill="#15140f" />
+        <rect x="64" y="52" width="4" height="4" fill="#15140f" />
 
-      <text
-        x="58"
-        y="30"
-        fontFamily="'Spline Sans Mono', 'Fira Code', monospace"
-        fontSize="20"
-        fontWeight="700"
-        letterSpacing="-0.8"
-        fill="#f4f6f5"
-      >
-        agent<tspan fill="#5fd089">tools</tspan>
-      </text>
-    </svg>
+        <rect x="88" y="16" width="2" height="48" fill="#15140f" />
+
+        <g transform="translate(110, 9)" fill="#15140f">
+          <path d="M 0,28 H 16 V 18 H 20 V 42 H 0 Z M 4,32 H 16 V 38 H 4 Z" fillRule="evenodd" />
+          <path d="M 24,18 H 44 V 46 H 24 V 38 H 28 V 42 H 40 V 34 H 24 Z M 28,22 H 40 V 30 H 28 Z" fillRule="evenodd" />
+          <path d="M 48,18 H 68 V 32 H 52 V 38 H 68 V 42 H 48 Z M 52,22 H 64 V 28 H 52 Z" fillRule="evenodd" />
+          <path d="M 72,18 H 92 V 42 H 88 V 22 H 76 V 42 H 72 Z" />
+          <path d="M 102,12 H 106 V 18 H 112 V 22 H 106 V 42 H 102 V 22 H 96 V 18 H 102 Z" />
+          <path d="M 134,12 H 138 V 18 H 144 V 22 H 138 V 42 H 134 V 22 H 128 V 18 H 134 Z" />
+          <path d="M 148,18 H 168 V 42 H 148 Z M 152,22 H 164 V 38 H 152 Z" fillRule="evenodd" />
+          <path d="M 172,18 H 192 V 42 H 172 Z M 176,22 H 188 V 38 H 176 Z" fillRule="evenodd" />
+          <path d="M 196,12 H 200 V 42 H 196 Z" />
+          <path d="M 204,18 H 222 V 22 H 208 V 28 H 222 V 42 H 204 V 38 H 218 V 32 H 204 Z" />
+        </g>
+      </svg>
+    </>
   );
 }

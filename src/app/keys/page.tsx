@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 const mono = "var(--font-spline-mono, ui-monospace, monospace)";
-const serif = "var(--font-newsreader, serif)";
+const serif = "var(--font-hanken, serif)";
 
 export default async function KeysPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -29,12 +29,14 @@ export default async function KeysPage() {
       <div className="mx-auto w-full px-5 py-10" style={{ maxWidth: 860 }}>
         <h1
           style={{
-            fontFamily: serif,
-            fontSize: 30,
-            fontWeight: 500,
+            fontFamily: "var(--font-archivo, system-ui, sans-serif)",
+            fontSize: 44,
+            fontWeight: 800,
+            lineHeight: 1,
             letterSpacing: "-0.02em",
+            textTransform: "uppercase",
             color: "var(--text-strong)",
-            margin: "0 0 6px",
+            margin: "0 0 8px",
           }}
         >
           API keys

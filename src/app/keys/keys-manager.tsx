@@ -167,7 +167,7 @@ export function KeysManager({
           className="flex items-center gap-3 p-3 mb-4 flex-wrap"
           style={{
             background: "var(--green-soft)",
-            border: "1px solid oklch(0.835 0.175 153 / 0.35)",
+            border: "1px solid rgba(32, 24, 255, 0.35)",
             borderRadius: 6,
           }}
         >

@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Newsreader, Spline_Sans_Mono } from "next/font/google";
+import {
+  Archivo,
+  Hanken_Grotesk,
+  Newsreader,
+  Spline_Sans_Mono,
+} from "next/font/google";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -11,6 +16,22 @@ const newsreader = Newsreader({
 const splineSansMono = Spline_Sans_Mono({
   subsets: ["latin"],
   variable: "--font-spline-mono",
+  display: "swap",
+});
+
+// Display face for the landing page — variable, with the width axis so it can
+// be set wide and heavy for confrontational headlines.
+const archivo = Archivo({
+  subsets: ["latin"],
+  axes: ["wdth"],
+  variable: "--font-archivo",
+  display: "swap",
+});
+
+// Body face for the landing page.
+const hanken = Hanken_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-hanken",
   display: "swap",
 });
 
@@ -30,7 +51,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${newsreader.variable} ${splineSansMono.variable} h-full antialiased`}
+      className={`${newsreader.variable} ${splineSansMono.variable} ${archivo.variable} ${hanken.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

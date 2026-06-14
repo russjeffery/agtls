@@ -21,11 +21,11 @@ export default async function ClaimPage({ params }: PageProps) {
     margin: "64px auto",
     padding: "0 20px",
     lineHeight: 1.6,
-    fontFamily: "var(--font-newsreader, 'Newsreader', serif)",
+    fontFamily: "var(--font-hanken, 'Newsreader', serif)",
   };
 
   const titleStyle: React.CSSProperties = {
-    fontFamily: "var(--font-newsreader, serif)",
+    fontFamily: "var(--font-hanken, serif)",
     fontSize: 28,
     fontWeight: 500,
     color: "var(--text-strong)",
