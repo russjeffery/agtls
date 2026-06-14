@@ -12,6 +12,67 @@ const SERVICE_NAME = "agtls";
 const REVOKED_EVENT =
   "https://schemas.workos.com/events/agent/auth/identity/assertion/revoked";
 
+/** Origin without trailing slash, e.g. `https://agtls.dev`. */
+function origin(): string {
+  return resourceUrl().replace(/\/$/, "");
+}
+
+// API Catalog (RFC 9727) — a Linkset (RFC 9264) advertising the APIs agtls
+// exposes. Each API is an `item` of the catalog; per-API context objects then
+// carry `service-desc` (machine-readable definition), `service-doc` (human
+// docs), and `service-meta` (auth metadata) links.
+export function apiCatalogLinkset() {
+  const base = origin();
+  const catalogUrl = `${base}/.well-known/api-catalog`;
+  const restApi = `${base}/api`;
+  const mcpApi = `${base}/api/mcp`;
+
+  return {
+    linkset: [
+      {
+        anchor: catalogUrl,
+        item: [
+          { href: restApi, title: `${SERVICE_NAME} REST API` },
+          { href: mcpApi, title: `${SERVICE_NAME} MCP server` },
+        ],
+      },
+      {
+        anchor: restApi,
+        "service-desc": [
+          {
+            href: `${base}/api/openapi.json`,
+            type: "application/openapi+json",
+            title: "OpenAPI 3.1 definition",
+          },
+        ],
+        "service-doc": [
+          { href: `${base}/docs/api`, type: "text/html", title: "REST API docs" },
+        ],
+        "service-meta": [
+          {
+            href: prmUrl(),
+            type: "application/json",
+            title: "Protected Resource Metadata (RFC 9728)",
+          },
+        ],
+      },
+      {
+        anchor: mcpApi,
+        "service-doc": [
+          { href: `${base}/docs/mcp`, type: "text/html", title: "MCP docs" },
+        ],
+        "service-meta": [
+          {
+            href: prmUrl(),
+            type: "application/json",
+            title: "Protected Resource Metadata (RFC 9728)",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 // Protected Resource Metadata (RFC 9728) — the machine-readable source of truth
 // that advertises the resource and points at the authorization server.
 export function protectedResourceMetadata() {
@@ -59,48 +120,279 @@ export function authorizationServerMetadata() {
   };
 }
 
-// Prose discovery doc — the human/LLM-friendly companion to the PRM.
+// Prose discovery doc — the human/LLM-friendly companion to the PRM. Written as
+// a step-by-step runbook an agent can follow end to end.
 export function authMarkdown(): string {
-  return `# ${SERVICE_NAME}
+  const base = origin();
+  const prmDoc = prmUrl();
+  const asDoc = `${base}/.well-known/oauth-authorization-server`;
+  return `# ${SERVICE_NAME} — Agent Registration
 
-Open-source infrastructure for AI agents. This document tells agents how to
-register against ${SERVICE_NAME} and authenticate on behalf of a user.
+You are an agent. ${SERVICE_NAME} is free, open infrastructure for AI agents —
+task lists, inbound webhook catchers, and durable shared state, exposed over
+REST and MCP. This document tells you how to get a credential and authenticate,
+on your own or on behalf of a user.
 
-## Flows supported
+**Canonical URL:** \`${base}/auth.md\`
 
-- **Agent verified** — a trusted agent provider asserts the user's identity
-  with an [ID-JAG](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-identity-assertion-authz-grant).
-  ${SERVICE_NAME} verifies the assertion and returns credentials synchronously.
-- **User claimed (anonymous start)** — the agent self-registers without an
-  identity and receives an \`api_key\` scoped to pre-claim permissions
-  immediately, then runs the OTP claim later to bind it to a real user and
-  upgrade scopes.
-- **User claimed (service auth)** — the agent supplies a \`login_hint\` (the
-  user's email) at registration; ${SERVICE_NAME} authenticates the user
-  out-of-band, emails an OTP, and issues no credential until the claim completes.
+No human is required to start: you can issue your own credential, work
+immediately, and attach the work to a human's account later.
 
-## Endpoints
+## Step 1 — Discover
 
-- Protected Resource Metadata: \`${prmUrl()}\`
-- Register: \`POST ${registerUri()}\` — dispatches on \`type\`
-- Start claim: \`POST ${claimUri()}\` (anonymous start)
-- Complete claim: \`POST ${claimUri()}/complete\`
-- Revocation: \`POST ${revocationUri()}\` (\`application/logout+jwt\`)
+Discovery uses OAuth Protected Resource Metadata (RFC 9728) and Authorization
+Server Metadata. Fetch the protected resource metadata first:
 
-## Scopes
+\`\`\`http
+GET ${prmDoc}
+\`\`\`
 
-- \`api.read\` — read tasks, webhooks, and other resources.
-- \`api.write\` — create and modify resources.
+\`\`\`json
+{
+  "resource": "${resourceUrl()}",
+  "resource_name": "${SERVICE_NAME}",
+  "authorization_servers": ["${authServerUrl()}"],
+  "scopes_supported": ["api.read", "api.write"],
+  "bearer_methods_supported": ["header"]
+}
+\`\`\`
 
-Anonymous (pre-claim) credentials receive \`api.read\` only; claimed and
-agent-verified credentials receive \`api.read\` and \`api.write\`.
+Then fetch the authorization server metadata for the \`agent_auth\` block that
+describes the flows ${SERVICE_NAME} accepts and the exact endpoint URLs:
 
-## Credentials
+\`\`\`http
+GET ${asDoc}
+\`\`\`
 
-Credentials are issued as \`agt_*\` bearer keys, passed as
-\`Authorization: Bearer <key>\`. \`access_token\` credentials expire; \`api_key\`
-credentials do not. Access tokens issued from an ID-JAG carry no refresh token —
-present a fresh ID-JAG to renew.
+${SERVICE_NAME} is both the resource server and the authorization server, so all
+URLs share the \`${base}\` origin.
+
+## Step 2 — Pick a method
+
+Choose the first that applies:
+
+1. **\`identity_assertion\` (ID-JAG)** — you run on a trusted agent platform and
+   can mint an [ID-JAG](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-identity-assertion-authz-grant)
+   for this user. ${SERVICE_NAME} verifies it and returns a full-scope credential
+   synchronously. No email round-trip.
+2. **\`service_auth\`** — you know the user's email but have no assertion.
+   ${SERVICE_NAME} emails the user an OTP and issues the credential only after
+   the claim completes.
+3. **\`anonymous\`** — no user identity. You get a read-only credential
+   immediately and bind it to a user later (Step 4).
+
+Before sending any user identity, show the user the service name
+(\`${SERVICE_NAME}\`) and the scopes you will receive.
+
+## Step 3 — Register
+
+All three methods POST to the same endpoint; ${SERVICE_NAME} dispatches on
+\`type\`. Responses are \`201\`. Errors use a flat
+\`{ "error": "<code>", "message": "..." }\` envelope (Step 6).
+
+### Anonymous
+
+\`\`\`http
+POST ${registerUri()}
+Content-Type: application/json
+
+{ "type": "anonymous" }
+\`\`\`
+
+\`\`\`json
+{
+  "registration_id": "...",
+  "registration_type": "anonymous",
+  "credential_type": "api_key",
+  "credential": "agt_...",
+  "credential_expires": null,
+  "scopes": ["api.read"],
+  "claim_url": "${claimUri()}",
+  "claim_token": "clm_...",
+  "claim_token_expires": "2026-06-21T00:00:00.000Z",
+  "claim_link": "${base}/agent/link/...",
+  "post_claim_scopes": ["api.read", "api.write"]
+}
+\`\`\`
+
+Use \`credential\` immediately (Step 5) — it is shown once. Pre-claim keys are
+read-only. Save \`claim_token\` (your secret for the OTP ceremony) and
+\`claim_link\` (hand straight to your human for an in-browser claim). Anonymous
+registration only supports \`api_key\`.
+
+### Service auth (email)
+
+\`\`\`http
+POST ${registerUri()}
+Content-Type: application/json
+
+{ "type": "service_auth", "login_hint": "user@example.com" }
+\`\`\`
+
+\`\`\`json
+{
+  "registration_id": "...",
+  "registration_type": "service_auth",
+  "claim_url": "${claimUri()}",
+  "claim_token": "clm_...",
+  "claim_token_expires": "2026-06-21T00:00:00.000Z",
+  "post_claim_scopes": ["api.read", "api.write"]
+}
+\`\`\`
+
+${SERVICE_NAME} emails the user a claim link. No credential is issued yet — keep
+\`claim_token\` in memory and go to Step 4. Add
+\`"requested_credential_type": "access_token"\` if you want an expiring token
+instead of an \`api_key\`.
+
+### ID-JAG
+
+Mint the assertion with \`aud\` = \`${resourceUrl()}\`, your provider issuer as
+\`iss\`, \`email_verified: true\`, a fresh \`jti\`, and a near-term \`exp\`.
+
+\`\`\`http
+POST ${registerUri()}
+Content-Type: application/json
+
+{
+  "type": "identity_assertion",
+  "assertion_type": "urn:ietf:params:oauth:token-type:id-jag",
+  "assertion": "<ID-JAG JWT>",
+  "requested_credential_type": "access_token"
+}
+\`\`\`
+
+\`\`\`json
+{
+  "registration_id": "...",
+  "registration_type": "agent-provider",
+  "credential_type": "access_token",
+  "credential": "agt_...",
+  "credential_expires": "2026-06-14T01:00:00.000Z",
+  "scopes": ["api.read", "api.write"]
+}
+\`\`\`
+
+Use the credential immediately. \`access_token\` credentials carry no refresh
+token — present a fresh ID-JAG to renew. Your issuer must be on
+${SERVICE_NAME}'s trusted list; if it is not, fall back to \`service_auth\` or
+\`anonymous\`.
+
+## Step 4 — Claim ceremony (bind to a user)
+
+Skip this for ID-JAG (already bound). For \`anonymous\`, trigger the email:
+
+\`\`\`http
+POST ${claimUri()}
+Content-Type: application/json
+
+{ "claim_token": "clm_...", "email": "user@example.com" }
+\`\`\`
+
+\`\`\`json
+{
+  "registration_id": "...",
+  "claim_attempt_id": "...",
+  "status": "initiated",
+  "expires_at": "2026-06-21T00:00:00.000Z"
+}
+\`\`\`
+
+(For \`service_auth\` the email was already sent at registration — go straight to
+the OTP submit below.) Tell the user: "Check your email, open the link, and read
+me the 6-digit code." Then submit it:
+
+\`\`\`http
+POST ${claimUri()}/complete
+Content-Type: application/json
+
+{ "claim_token": "clm_...", "otp": "123456" }
+\`\`\`
+
+For an anonymous registration the existing key keeps working, upgraded to
+\`["api.read", "api.write"]\` in place:
+
+\`\`\`json
+{ "registration_id": "...", "status": "claimed" }
+\`\`\`
+
+For \`service_auth\` the credential is issued now:
+
+\`\`\`json
+{
+  "registration_id": "...",
+  "status": "claimed",
+  "credential_type": "api_key",
+  "credential": "agt_...",
+  "credential_expires": null,
+  "scopes": ["api.read", "api.write"]
+}
+\`\`\`
+
+If the email matches an existing ${SERVICE_NAME} account, you join that user's
+organization as a member and share their resources. **Alternative (no OTP):** for
+anonymous registrations, hand the \`claim_link\` from Step 3 to your human — they
+open it, sign in, and claim you in-session.
+
+## Step 5 — Use the credential
+
+Send the credential as a bearer token on every request:
+
+\`\`\`http
+GET ${base}/api/tasks
+Authorization: Bearer agt_...
+\`\`\`
+
+- REST base: \`${base}/api\` — JSON in/out, errors in a
+  \`{ "error": { "type", "code", "message" } }\` envelope.
+- MCP: connect to \`${base}/api/mcp\` (streamable HTTP) with the same
+  \`Authorization: Bearer\` header. You can also register entirely over MCP via
+  the \`agent_register\` tool.
+- Agent skill (full runbook for using the API): \`${base}/skill.md\`
+
+\`api_key\` credentials do not expire; \`access_token\` credentials do. If a
+previously working credential returns \`401\`, discard it and restart from
+Step 1.
+
+## Step 6 — Errors
+
+Agent-auth endpoints return \`{ "error": "<code>", "message": "..." }\`.
+
+| Code | Where | What to do |
+| --- | --- | --- |
+| \`invalid_request\` | any | Fix the request body and retry. |
+| \`unsupported_type\` | register | Use a supported \`type\` / \`assertion_type\`. |
+| \`unsupported_credential_type\` | register | Anonymous supports only \`api_key\`; re-request. |
+| \`invalid_login_hint\` | \`service_auth\` | Send a valid email as \`login_hint\`. |
+| \`service_auth_not_enabled\` | \`service_auth\` | Use \`anonymous\` or \`identity_assertion\`. |
+| \`invalid_issuer\` | ID-JAG | Your issuer is not trusted; use \`service_auth\` / \`anonymous\`. |
+| \`invalid_signature\` | ID-JAG | Mint a fresh, correctly signed ID-JAG. |
+| \`invalid_audience\` | ID-JAG | Mint with \`aud\` = \`${resourceUrl()}\`. |
+| \`expired\` | ID-JAG | Mint a fresh assertion. |
+| \`replay_detected\` | ID-JAG | Mint a fresh assertion with a new \`jti\`. |
+| \`missing_verified_email\` | ID-JAG | Include \`email\` + \`email_verified: true\`. |
+| \`invalid_claim_token\` | claim | Unknown token; restart registration. |
+| \`claimed_or_in_flight\` | claim | Already claimed or a claim is pending. |
+| \`previously_claimed\` | claim complete | Restart if you need a fresh credential. |
+| \`claim_expired\` | claim | The window elapsed; restart registration. |
+| \`otp_invalid\` | claim complete | Ask the user to re-read the code. |
+| \`otp_expired\` | claim complete | Re-open the claim link to mint a new code. |
+| \`rate_limited\` | any | Back off and retry later. |
+| \`server_error\` | any | Retry with exponential backoff. |
+
+Retry \`5xx\` with exponential backoff. Do not retry the same \`4xx\` payload
+unless the table says to.
+
+## Revocation
+
+Agents do not initiate revocation. If a credential stops working (\`401\`),
+discard it and restart from Step 1. Provider-driven revocation for ID-JAG flows
+posts a signed logout token here:
+
+\`\`\`http
+POST ${revocationUri()}
+Content-Type: application/logout+jwt
+\`\`\`
 
 ## Policies & contact
 

@@ -71,7 +71,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       title: "agtls API",
       version: pkg.version,
       description:
-        "Open-source infrastructure for AI agents. API key auth is optional: without a key, " +
+        "Open infrastructure for AI agents. API key auth is optional: without a key, " +
         "resources are created public (reachable by ID) and can later be claimed; with an " +
         "`agt_live_…` key, resources are owned by the key's organization. All timestamps are " +
         "Unix seconds. Lists use cursor pagination (`limit`, `after`).",

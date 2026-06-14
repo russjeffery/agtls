@@ -59,7 +59,7 @@ export default function DocsHomePage() {
       <DocHeader
         eyebrow="Documentation"
         title="Build on agtls"
-        lead="Open-source infrastructure for AI agents — tasks, webhooks, artifacts, and scheduled messages, exposed over a REST API and an MCP server. Authentication is optional: without a key, resources are created public and reachable by ID, then claimed later."
+        lead="Open infrastructure for AI agents — tasks, webhooks, artifacts, and scheduled messages, exposed over a REST API and an MCP server. Authentication is optional: without a key, resources are created public and reachable by ID, then claimed later."
       />
 
       <DocSection title="Choose an interface">

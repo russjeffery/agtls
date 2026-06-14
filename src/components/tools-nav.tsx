@@ -31,7 +31,7 @@ export function ToolsMenu({ className }: { className?: string }) {
       <NavigationMenuList>
         <NavigationMenuItem>
           <NavigationMenuTrigger
-            className="h-auto rounded-none px-[18px] py-0 font-normal bg-transparent hover:bg-transparent data-popup-open:bg-transparent data-open:bg-transparent uppercase"
+            className="h-auto rounded-none px-3 sm:px-[18px] py-0 font-normal bg-transparent hover:bg-transparent data-popup-open:bg-transparent data-open:bg-transparent uppercase"
             style={{
               fontFamily: mono,
               fontSize: 12,

@@ -1,9 +1,14 @@
 import Link from "next/link";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth/server";
-import styles from "./page.module.css";
+import { getPageViewer } from "@/lib/api/page-viewer";
+import { AppHeader } from "@/components/app-header";
+import { CodeTabs, type CodeTab } from "@/components/home/code-tabs";
+import { highlight } from "@/lib/shiki";
 
 const GITHUB = "https://github.com/russjeffery/agtls";
+
+const mono = "var(--font-spline-mono, ui-monospace, monospace)";
+const body = "var(--font-hanken, system-ui, sans-serif)";
+const display = "var(--font-archivo, system-ui, sans-serif)";
 
 const TOOLS = [
   {
@@ -51,7 +56,14 @@ const PRINCIPLES = [
       <>
         Every tool is a typed JSON API and an MCP tool from the same endpoint.
         OpenAPI 3.1 spec at{" "}
-        <a href="/api/openapi.json">/api/openapi.json</a>.
+        <a
+          href="/api/openapi.json"
+          style={{ color: "var(--accent-hover)" }}
+          className="underline underline-offset-[3px]"
+        >
+          /api/openapi.json
+        </a>
+        .
       </>
     ),
   },
@@ -77,140 +89,292 @@ const PRINCIPLES = [
   },
 ];
 
-async function Header({ signedIn }: { signedIn: boolean }) {
+const labelStyle: React.CSSProperties = {
+  fontFamily: mono,
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+};
+
+const displayStyle: React.CSSProperties = {
+  fontFamily: display,
+  fontWeight: 840,
+  fontVariationSettings: '"wdth" 118',
+  textTransform: "uppercase",
+  lineHeight: 0.9,
+  letterSpacing: "-0.018em",
+  color: "var(--text-strong)",
+  margin: 0,
+};
+
+function Dot({ className = "" }: { className?: string }) {
   return (
-    <header className={styles.header}>
-      <Link href="/" className={styles.brand}>
-        <span className={styles.brandMark} aria-hidden />
-        AGTLS
-      </Link>
-      <nav className={styles.nav}>
-        <a className={styles.navLink} href="#tools">
-          Tools
-        </a>
-        <a className={styles.navLink} href="/api">
-          Docs
-        </a>
-        {signedIn ? (
-          <a className={`${styles.navLink} ${styles.headerCta}`} href="/dashboard">
-            Dashboard →
-          </a>
-        ) : (
-          <a className={`${styles.navLink} ${styles.headerCta}`} href="/sign-up">
-            Get API key →
-          </a>
-        )}
-      </nav>
-    </header>
+    <span
+      aria-hidden
+      className={`inline-block h-2 w-2 rounded-full ${className}`}
+      style={{ background: "var(--ds-accent)" }}
+    />
   );
 }
 
 function MetaStrip() {
+  const item =
+    "flex items-center gap-2 px-[18px] py-[9px] border-r border-[var(--line-1)]";
+  const itemStyle: React.CSSProperties = {
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+  };
   return (
-    <div className={styles.meta}>
-      <span className={styles.metaItem}>
-        <b>Agent Tools</b>
+    <div
+      className="flex flex-wrap border-b-2 border-[var(--text-strong)]"
+      style={{ background: "var(--bg-deep)" }}
+    >
+      <span className={item} style={itemStyle}>
+        <b style={{ color: "var(--text-strong)", fontWeight: 600 }}>
+          Agent Tools
+        </b>
       </span>
-      <span className={styles.metaItem}>
-        Rev <b>0.1</b>
+      <span className={item} style={itemStyle}>
+        Rev{" "}
+        <b style={{ color: "var(--text-strong)", fontWeight: 600 }}>0.1</b>
       </span>
-      <span className={styles.metaItem}>
-        Status <span className={styles.dot} aria-hidden /> <b>Live</b>
+      <span className={item} style={itemStyle}>
+        Status <Dot className="animate-pulse" />{" "}
+        <b style={{ color: "var(--text-strong)", fontWeight: 600 }}>Live</b>
       </span>
-      <span className={`${styles.metaItem} ${styles.metaSpacer}`} />
-      <span className={styles.metaItem}>MCP Ready</span>
+      <span
+        className="flex flex-1 items-center px-[18px] py-[9px]"
+        style={itemStyle}
+      />
+      <span
+        className="flex items-center px-[18px] py-[9px] border-l border-[var(--line-1)]"
+        style={itemStyle}
+      >
+        MCP Ready
+      </span>
     </div>
   );
 }
 
-function Hero() {
+const CURL_SNIPPET = `curl -X POST https://agtls.dev/api/tasks \\
+  -d '{"name":"Review PR #142","priority":"high"}'`;
+
+const MCP_SNIPPET = `{
+  "mcpServers": {
+    "agtls": {
+      "url": "https://agtls.dev/api/mcp"
+    }
+  }
+}`;
+
+const AGENT_PROMPT = `You have shell access. Use agtls (https://agtls.dev) —
+open infrastructure for agents, no API key required — to
+track this work.
+
+Create a task with a plain HTTP call:
+
+  curl -X POST https://agtls.dev/api/tasks \\
+    -d '{"name":"<short title>","priority":"high"}'
+
+The JSON response includes an "id" and a "claim_url". Save
+the id so you can update the task later, and give me the
+claim_url so I can take ownership in my org.`;
+
+async function Hero() {
+  const tabs: CodeTab[] = [
+    {
+      id: "curl",
+      label: "cURL",
+      html: await highlight(CURL_SNIPPET, "bash"),
+      code: CURL_SNIPPET,
+      note: "One unauthenticated POST. No key, no signup — claim it into your org later.",
+    },
+    {
+      id: "mcp",
+      label: "MCP",
+      html: await highlight(MCP_SNIPPET, "json"),
+      code: MCP_SNIPPET,
+      note: "Add to your MCP client config (Claude Desktop, Cursor, …). Server URL: https://agtls.dev/api/mcp",
+    },
+    {
+      id: "agent",
+      label: "Agent prompt",
+      html: null,
+      code: AGENT_PROMPT,
+      note: "Paste into an agent that can run shell commands (Claude Code, a sandbox, etc.).",
+    },
+  ];
+
   return (
-    <section className={styles.hero}>
-      <span className={styles.eyebrow}>
+    <section className="border-b-2 border-[var(--text-strong)] px-5 pt-12 sm:px-10 sm:pt-16">
+      <span
+        className="mb-7 inline-flex items-center gap-2.5"
+        style={{ ...labelStyle, color: "var(--accent-hover)" }}
+      >
         REST · MCP · No key required
       </span>
-      <h1 className={styles.heroTitle}>
-        <span className={styles.line}>
-          <span>Simple <br />tools</span>
-        </span>
-        <span className={styles.line}>
-          <span>
-            for
-            <span className={styles.line}><em>agents</em></span>
-          </span>
-        </span>
+
+      <h1
+        style={{
+          ...displayStyle,
+          fontSize: "clamp(3.25rem, 9vw, 10.5rem)",
+        }}
+      >
+        Simple tools
+        <br />
+        for <em style={{ fontStyle: "normal", color: "var(--ds-accent)" }}>
+          agents
+        </em>
       </h1>
 
-      <div className={styles.heroLower}>
-        <div className={styles.heroLeft}>
-          <p className={styles.dek}>
+      <div className="mt-14 grid grid-cols-1 md:grid-cols-2">
+        <div className="py-9 pr-0 md:pr-12 pb-14">
+          <p
+            className="mb-9 max-w-[46ch]"
+            style={{
+              fontFamily: body,
+              fontSize: 19,
+              lineHeight: 1.5,
+              color: "var(--text-muted)",
+            }}
+          >
             Tasks, artifacts, scheduled wake-ups, and webhook catchers your
-            agent reaches over plain HTTP or MCP. No auth, unless you want to save them.
+            agent reaches over plain HTTP or MCP. No auth, unless you want to
+            save them.
           </p>
-          <div className={styles.actions}>
-            <a className={`${styles.btn} ${styles.btnPrimary}`} href="#curl">
+          <div className="flex flex-wrap gap-3.5">
+            <a
+              href="#curl"
+              className="inline-flex items-center gap-2.5 border-2 px-[22px] py-[15px] transition-colors"
+              style={{
+                fontFamily: mono,
+                fontSize: 13,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                borderColor: "var(--text-strong)",
+                background: "var(--ds-accent)",
+                color: "var(--text-on-accent)",
+              }}
+            >
               Start with one curl →
             </a>
-            <a className={`${styles.btn} ${styles.btnGhost}`} href="/api">
+            <a
+              href="/docs"
+              className="inline-flex items-center gap-2.5 border-2 px-[22px] py-[15px] transition-colors hover:bg-[var(--text-strong)] hover:text-[var(--bg-app)]"
+              style={{
+                fontFamily: mono,
+                fontSize: 13,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                borderColor: "var(--text-strong)",
+                color: "var(--text-strong)",
+              }}
+            >
               Read the API docs
             </a>
           </div>
         </div>
 
-        <div className={styles.heroRight} id="curl">
-          <div className={styles.spec}>
-            <div className={styles.specHead}>
-              <span className={styles.method}>POST</span>
-              <span className={styles.specPath}>/api/tasks</span>
-              <span className={styles.specBadge}>
-                <span className={styles.dot} aria-hidden /> 200 OK
-              </span>
-            </div>
-            <pre className={styles.code}>
-              <span className={styles.dim}>$ </span>
-              <span className={styles.cmd}>curl</span>
-              {" -X POST https://agtls.dev/api/tasks \\\n"}
-              {"    -d '"}
-              {'{"name":"Review PR #142","priority":"high"}'}
-              {"'\n\n{\n  "}
-              <span className={styles.key}>&quot;id&quot;</span>
-              {': "tsk_8f2k1xQz",\n  '}
-              <span className={styles.key}>&quot;object&quot;</span>
-              {': "task",\n  '}
-              <span className={styles.key}>&quot;status&quot;</span>
-              {': "pending",\n  '}
-              <span className={styles.key}>&quot;claim_url&quot;</span>
-              {': "/api/claim/tsk_8f2k1xQz"\n}\n\n'}
-              <span className={styles.dim}>
-                # No key. No signup. Claim it into your org later.
-              </span>
-            </pre>
-          </div>
+        <div
+          id="curl"
+          className="flex items-stretch border-t-2 md:border-t-0 md:border-l-2 border-[var(--text-strong)]"
+        >
+          <CodeTabs tabs={tabs} />
         </div>
       </div>
     </section>
   );
 }
 
+function SectionHead({ label, title }: { label: string; title: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-[18px] border-b-2 border-[var(--text-strong)] px-5 py-[26px] sm:px-10">
+      <span style={{ ...labelStyle, color: "var(--accent-hover)" }}>{label}</span>
+      <h2
+        style={{
+          ...displayStyle,
+          fontSize: "clamp(1.9rem, 4.6vw, 4rem)",
+        }}
+      >
+        {title}
+      </h2>
+    </div>
+  );
+}
+
 function Tools() {
   return (
     <section id="tools">
-      <div className={styles.sectionHead}>
-        <span className={styles.label}>// available now</span>
-        <h2>Four tools. Zero setup.</h2>
-      </div>
-      <div className={styles.toolGrid}>
+      <SectionHead label="// available now" title="Four tools. Zero setup." />
+      <div className="grid grid-cols-1 overflow-hidden border-b-2 border-[var(--text-strong)] sm:grid-cols-2 lg:grid-cols-4">
         {TOOLS.map((t) => (
-          <Link key={t.name} href={t.href} className={styles.tool}>
-            <div className={styles.toolTop}>
-              <span className={styles.toolStatus}>
-                <span className={styles.dot} aria-hidden /> Live
+          <Link
+            key={t.name}
+            href={t.href}
+            className="group flex min-h-[280px] flex-col gap-4 border-b border-r border-[var(--line-1)] px-[22px] pt-[22px] pb-[26px] transition-colors hover:bg-[var(--text-strong)]"
+            style={{ color: "var(--text-strong)", textDecoration: "none" }}
+          >
+            <div className="flex items-center justify-between">
+              <span
+                className="inline-flex items-center gap-[7px] group-hover:text-[#c9c7bb]"
+                style={{
+                  fontFamily: mono,
+                  fontSize: 10,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <Dot /> Live
               </span>
-              <span className={styles.toolArrow}>Open →</span>
+              <span
+                className="translate-x-[-4px] opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-[var(--bg-app)]"
+                style={{
+                  fontFamily: mono,
+                  fontSize: 13,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Open →
+              </span>
             </div>
-            <span className={styles.toolName}>{t.name}</span>
-            <span className={styles.toolPath}>{t.path}</span>
-            <span className={styles.toolDesc}>{t.desc}</span>
+            <span
+              className="mt-auto group-hover:text-[var(--bg-app)]"
+              style={{
+                ...displayStyle,
+                fontWeight: 820,
+                fontVariationSettings: '"wdth" 102',
+                fontSize: "2rem",
+              }}
+            >
+              {t.name}
+            </span>
+            <span
+              className="group-hover:text-[#8f8bff]"
+              style={{
+                fontFamily: mono,
+                fontSize: 12,
+                color: "var(--accent-hover)",
+              }}
+            >
+              {t.path}
+            </span>
+            <span
+              className="group-hover:text-[#c9c7bb]"
+              style={{
+                fontFamily: body,
+                fontSize: 14.5,
+                lineHeight: 1.45,
+                color: "var(--text-muted)",
+              }}
+            >
+              {t.desc}
+            </span>
           </Link>
         ))}
       </div>
@@ -220,17 +384,52 @@ function Tools() {
 
 function Why() {
   return (
-    <section className={styles.why}>
-      <div className={styles.sectionHead}>
-        <span className={styles.label}>// the difference</span>
-        <h2>Humans welcome too.</h2>
-      </div>
-      {PRINCIPLES.map((p) => (
-        <div key={p.title} className={styles.whyRow}>
-          <div className={styles.whyTag}>{p.tag}</div>
-          <div className={styles.whyBody}>
-            <h3>{p.title}</h3>
-            <p>{p.body}</p>
+    <section className="border-b-2 border-[var(--text-strong)]">
+      <SectionHead label="// the difference" title="Humans welcome too." />
+      {PRINCIPLES.map((p, i) => (
+        <div
+          key={p.title}
+          className={`grid grid-cols-1 md:grid-cols-[240px_1fr] ${i > 0 ? "border-t border-[var(--line-1)]" : ""
+            }`}
+        >
+          <div
+            className="border-b border-[var(--line-1)] px-5 py-7 sm:px-10 md:border-b-0 md:border-r md:py-7"
+            style={{
+              fontFamily: mono,
+              fontSize: 12,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--accent-hover)",
+            }}
+          >
+            {p.tag}
+          </div>
+          <div className="px-5 pt-[26px] pb-[30px] sm:px-10">
+            <h3
+              className="mb-2.5"
+              style={{
+                fontFamily: display,
+                fontWeight: 820,
+                fontVariationSettings: '"wdth" 104',
+                textTransform: "uppercase",
+                lineHeight: 0.96,
+                letterSpacing: "-0.012em",
+                color: "var(--text-strong)",
+                fontSize: "clamp(1.4rem, 2.8vw, 2.1rem)",
+              }}
+            >
+              {p.title}
+            </h3>
+            <p
+              className="m-0 max-w-[62ch]"
+              style={{
+                fontFamily: body,
+                fontSize: 16.5,
+                color: "var(--text-muted)",
+              }}
+            >
+              {p.body}
+            </p>
           </div>
         </div>
       ))}
@@ -239,20 +438,60 @@ function Why() {
 }
 
 function Mcp() {
+  const codeStyle: React.CSSProperties = {
+    fontFamily: mono,
+    fontSize: 13,
+    color: "var(--text-strong)",
+    background: "var(--surface-card)",
+    padding: "2px 6px",
+    border: "1px solid var(--line-1)",
+  };
   return (
-    <section className={styles.mcp}>
-      <div className={styles.whyTag}>// mcp endpoint</div>
-      <div className={styles.mcpBody}>
-        <span className={styles.mcpEndpoint}>POST /api/mcp</span>
-        <p>
+    <section
+      className="grid grid-cols-1 border-b-2 border-[var(--text-strong)] md:grid-cols-[240px_1fr]"
+      style={{ background: "var(--bg-deep)" }}
+    >
+      <div
+        className="border-b border-[var(--line-1)] px-5 py-7 sm:px-10 md:border-b-0 md:border-r"
+        style={{
+          fontFamily: mono,
+          fontSize: 12,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          color: "var(--accent-hover)",
+        }}
+      >
+        // mcp endpoint
+      </div>
+      <div className="px-5 pt-[26px] pb-[30px] sm:px-10">
+        <span
+          style={{
+            fontFamily: mono,
+            fontSize: "clamp(1.1rem, 2.4vw, 1.6rem)",
+            fontWeight: 600,
+            color: "var(--text-strong)",
+          }}
+        >
+          POST /api/mcp
+        </span>
+        <p
+          className="mt-3 max-w-[70ch]"
+          style={{ fontFamily: body, fontSize: 16, color: "var(--text-muted)" }}
+        >
           Every tool is available over the Model Context Protocol (Streamable
           HTTP). API key optional — pass{" "}
-          <code>Authorization: Bearer agt_…</code> to scope tools to your org.
+          <code style={codeStyle}>Authorization: Bearer agt_…</code> to scope
+          tools to your org.
         </p>
-        <p>
-          <code>tasks_*</code> &nbsp; <code>webhook_*</code> &nbsp;{" "}
-          <code>artifact_*</code> &nbsp; <code>messages_*</code> &nbsp;{" "}
-          <code>claim</code>
+        <p
+          className="mt-3 max-w-[70ch]"
+          style={{ fontFamily: body, fontSize: 16, color: "var(--text-muted)" }}
+        >
+          <code style={codeStyle}>tasks_*</code>{" "}
+          <code style={codeStyle}>webhook_*</code>{" "}
+          <code style={codeStyle}>artifact_*</code>{" "}
+          <code style={codeStyle}>messages_*</code>{" "}
+          <code style={codeStyle}>claim</code>
         </p>
       </div>
     </section>
@@ -261,15 +500,49 @@ function Mcp() {
 
 function Cta() {
   return (
-    <section className={styles.cta}>
-      <h2 className={styles.display}>
-        Your agent could be using this <em>already.</em>
+    <section
+      className="border-b-2 border-[var(--text-strong)] px-5 py-20 sm:px-10"
+      style={{ background: "var(--text-strong)" }}
+    >
+      <h2
+        style={{
+          ...displayStyle,
+          color: "var(--bg-app)",
+          fontSize: "clamp(2.4rem, 6.5vw, 6rem)",
+          maxWidth: "16ch",
+        }}
+      >
+        Your agent could be using this{" "}
+        <em style={{ fontStyle: "normal", color: "#6f6aff" }}>already.</em>
       </h2>
-      <div className={styles.ctaActions}>
-        <a className={`${styles.btn} ${styles.ctaPrimary}`} href="/sign-up">
+      <div className="mt-10 flex flex-wrap gap-3.5">
+        <a
+          href="/sign-up"
+          className="inline-flex items-center gap-2.5 border-2 px-[22px] py-[15px] transition-colors hover:bg-[var(--bg-app)] hover:text-[var(--text-strong)]"
+          style={{
+            fontFamily: mono,
+            fontSize: 13,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            background: "var(--ds-accent)",
+            color: "var(--text-on-accent)",
+            borderColor: "var(--ds-accent)",
+          }}
+        >
           Get an API key →
         </a>
-        <a className={`${styles.btn} ${styles.ctaGhost}`} href="/api">
+        <a
+          href="/api"
+          className="inline-flex items-center gap-2.5 border-2 px-[22px] py-[15px] transition-colors hover:bg-[var(--bg-app)] hover:text-[var(--text-strong)]"
+          style={{
+            fontFamily: mono,
+            fontSize: 13,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "var(--bg-app)",
+            borderColor: "var(--bg-app)",
+          }}
+        >
           GET /api — explore without one
         </a>
       </div>
@@ -278,38 +551,74 @@ function Cta() {
 }
 
 function Footer() {
+  const headStyle: React.CSSProperties = {
+    ...labelStyle,
+    color: "var(--text-muted)",
+    marginBottom: 16,
+  };
+  const linkStyle: React.CSSProperties = {
+    display: "block",
+    marginBottom: 10,
+    fontFamily: mono,
+    fontSize: 13,
+    color: "var(--text-strong)",
+    textDecoration: "none",
+  };
+  const linkClass = "transition-colors hover:text-[var(--accent-hover)]";
+  const cell = "border-b border-r border-[var(--line-1)] p-10";
   return (
-    <footer className={styles.footer}>
-      <div className={styles.footCell}>
-        <div className={styles.footBrand}>AGTLS</div>
-        <p className={styles.footNote}>
-          Open-source infrastructure for AI agents. MIT licensed.
+    <footer
+      className="grid grid-cols-1 overflow-hidden sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]"
+      style={{ background: "var(--bg-deep)" }}
+    >
+      <div className={cell}>
+        <div
+          style={{
+            fontFamily: display,
+            fontWeight: 800,
+            fontVariationSettings: '"wdth" 112',
+            fontSize: 24,
+            textTransform: "uppercase",
+            color: "var(--text-strong)",
+          }}
+        >
+          AGTLS
+        </div>
+        <p
+          className="mt-3.5 max-w-[30ch]"
+          style={{ fontFamily: body, fontSize: 14, color: "var(--text-muted)" }}
+        >
+          Open infrastructure for AI agents.
         </p>
       </div>
-      <div className={styles.footCell}>
-        <div className={styles.footHead}>Product</div>
-        <a className={styles.footLink} href="#tools">
+      <div className={cell}>
+        <div style={headStyle}>Product</div>
+        <a className={linkClass} style={linkStyle} href="#tools">
           Tools
         </a>
-        <Link className={styles.footLink} href="/dashboard">
+        <Link className={linkClass} style={linkStyle} href="/dashboard">
           Dashboard
         </Link>
       </div>
-      <div className={styles.footCell}>
-        <div className={styles.footHead}>Developers</div>
-        <a className={styles.footLink} href="/api">
+      <div className={cell}>
+        <div style={headStyle}>Developers</div>
+        <a className={linkClass} style={linkStyle} href="/api">
           API reference
         </a>
-        <a className={styles.footLink} href="/api/openapi.json">
+        <a className={linkClass} style={linkStyle} href="/api/openapi.json">
           OpenAPI spec
         </a>
       </div>
-      <div className={styles.footCell}>
-        <div className={styles.footHead}>Project</div>
-        <a className={styles.footLink} href={GITHUB}>
+      <div className={cell}>
+        <div style={headStyle}>Project</div>
+        <a className={linkClass} style={linkStyle} href={GITHUB}>
           GitHub
         </a>
-        <a className={styles.footLink} href={`${GITHUB}/blob/main/LICENSE`}>
+        <a
+          className={linkClass}
+          style={linkStyle}
+          href={`${GITHUB}/blob/main/LICENSE`}
+        >
           License
         </a>
       </div>
@@ -318,12 +627,16 @@ function Footer() {
 }
 
 export default async function Home() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const viewer = await getPageViewer();
 
   return (
-    <div className={styles.page}>
-      <Header signedIn={!!session} />
-      <div className={styles.frame}>
+    <div className="min-h-screen" style={{ background: "var(--bg-app)" }}>
+      <AppHeader
+        user={
+          viewer ? { name: viewer.user.name, email: viewer.user.email } : null
+        }
+      />
+      <div className="mx-auto max-w-[1360px] border-x-0 border-[var(--text-strong)] sm:border-x-2">
         <MetaStrip />
         <main>
           <Hero />
