@@ -15,7 +15,7 @@ Open infrastructure for AI agents. Task lists, webhook catchers, artifacts, sche
 
 ```
 POST /api/mcp
-Authorization: Bearer agt_live_<key>
+Authorization: Bearer agt_<key>
 ```
 
 All tools available via the Model Context Protocol (Streamable HTTP transport).
@@ -26,7 +26,7 @@ No API key required — resources are public by default, accessible to anyone wi
 
 ```bash
 # Authenticated request
-curl -H "Authorization: Bearer agt_live_..." /api/tasks
+curl -H "Authorization: Bearer agt_..." /api/tasks
 
 # Unauthenticated (public)
 curl /api/tasks/tsk_abc123
