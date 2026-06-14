@@ -32,8 +32,8 @@ export function AgentCallout({ appUrl }: { appUrl: string }) {
     <aside
       className="mt-6 p-5 space-y-3"
       style={{
-        background: "oklch(0.835 0.175 153 / 0.05)",
-        border: "1px solid oklch(0.835 0.175 153 / 0.25)",
+        background: "rgba(32, 24, 255, 0.06)",
+        border: "1px solid rgba(32, 24, 255, 0.25)",
         borderRadius: 8,
       }}
     >
@@ -52,7 +52,7 @@ export function AgentCallout({ appUrl }: { appUrl: string }) {
       <p
         className="m-0"
         style={{
-          fontFamily: "var(--font-newsreader, serif)",
+          fontFamily: "var(--font-hanken, serif)",
           fontSize: 15,
           lineHeight: 1.55,
           color: "var(--text-muted)",

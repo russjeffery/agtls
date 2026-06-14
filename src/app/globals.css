@@ -8,11 +8,11 @@
 /* @custom-variant dark (&:is(.dark *)); */
 
 @theme inline {
-  /* Font families — serif for display/prose, mono for all UI */
-  --font-sans: var(--font-spline-mono);
+  /* Font families — Archivo display, Hanken body, mono for data/labels */
+  --font-sans: var(--font-hanken);
   --font-mono: var(--font-spline-mono);
-  --font-serif: var(--font-newsreader);
-  --font-heading: var(--font-newsreader);
+  --font-serif: var(--font-archivo);
+  --font-heading: var(--font-archivo);
 
   /* ShadCN color mappings */
   --color-background: var(--background);
@@ -117,7 +117,7 @@
   --text-body: var(--gray-200);
   --text-muted: var(--gray-400);
   --text-faint: var(--gray-500);
-  --text-on-accent: oklch(0.165 0.02 153);
+  --text-on-accent: #f1efe6;
 
   --border-subtle: var(--line-faint);
   --border-strong: var(--line-2);
@@ -190,6 +190,74 @@
   --sidebar-accent-foreground: var(--text-strong);
   --sidebar-border: var(--line-1);
   --sidebar-ring: var(--ds-accent);
+
+  /* ================================================================
+     CONCRETE & SIGNAL — light re-theme.
+     Appended last so these win over the dark values above; every
+     shadcn + semantic token references these via var(), so the whole
+     app re-skins to the landing page's datasheet identity.
+     Accent (formerly green) is remapped to electric ultramarine.
+     ================================================================ */
+
+  /* Accent family → electric ultramarine signal */
+  --green-300: #6f6aff;
+  --green-400: #2018ff;
+  --green-500: #1610c4;
+  --green-600: #120bb0;
+  --green-700: #0d0890;
+  --green-soft: rgba(32, 24, 255, 0.12);
+  --green-glow: rgba(32, 24, 255, 0.28);
+
+  /* Hairlines → dark ink over concrete */
+  --line-faint: rgba(21, 20, 15, 0.1);
+  --line-1: rgba(21, 20, 15, 0.16);
+  --line-2: rgba(21, 20, 15, 0.28);
+  --line-strong: rgba(21, 20, 15, 0.46);
+
+  /* Surfaces → concrete / bone ramp */
+  --bg-app: #d6d4c8;
+  --bg-deep: #cdcabd;
+  --surface-1: #e1dfd5;
+  --surface-card: #e7e5db;
+  --surface-raised: #efece3;
+  --surface-well: #cdcabd;
+
+  /* Text → ink ramp */
+  --text-strong: #15140f;
+  --text-body: #2a2820;
+  --text-muted: #5b584c;
+  --text-faint: #837f70;
+  --text-on-accent: #f1efe6;
+
+  /* Accent semantic aliases */
+  --ds-accent: #2018ff;
+  --accent-hover: #1610c4;
+  --accent-press: #120bb0;
+  --accent-fill: rgba(32, 24, 255, 0.12);
+  --accent-ring: rgba(32, 24, 255, 0.3);
+
+  /* Square corners — datasheet */
+  --radius: 0px;
+
+  /* Crisp, low offset shadows read better on a light ground */
+  --shadow-sm: 0 1px 0 rgba(21, 20, 15, 0.1);
+  --shadow-md: 0 2px 0 rgba(21, 20, 15, 0.12);
+  --shadow-lg: 0 3px 0 rgba(21, 20, 15, 0.14);
+  --shadow-xl: 0 5px 0 rgba(21, 20, 15, 0.16);
+  --bevel-top: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  --ring-focus: 0 0 0 3px var(--accent-ring);
+
+  /* Syntax highlighting tuned for the light ground */
+  --shiki-foreground: #2a2820;
+  --shiki-token-keyword: #1610c4;
+  --shiki-token-string: #1a6f3c;
+  --shiki-token-string-expression: #1a6f3c;
+  --shiki-token-constant: #9a5b00;
+  --shiki-token-punctuation: #837f70;
+  --shiki-token-comment: #9b9789;
+  --shiki-token-function: #2a2820;
+  --shiki-token-parameter: #2a2820;
+  --shiki-token-link: #2018ff;
 }
 
 @layer base {
@@ -221,7 +289,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-newsreader, 'Newsreader', 'Iowan Old Style', serif);
+    font-family: var(--font-hanken, 'Hanken Grotesk', system-ui, sans-serif);
     font-size: 15px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -232,11 +300,11 @@
   h2,
   h3,
   h4 {
-    font-family: var(--font-newsreader, 'Newsreader', serif);
+    font-family: var(--font-archivo, 'Archivo', system-ui, sans-serif);
     color: var(--text-strong);
-    font-weight: 500;
-    line-height: 1.08;
-    letter-spacing: -0.02em;
+    font-weight: 700;
+    line-height: 1.02;
+    letter-spacing: -0.015em;
     margin: 0;
   }
 

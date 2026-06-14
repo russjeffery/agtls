@@ -28,12 +28,14 @@ export default async function DashboardPage() {
       <div className="mx-auto w-full px-5 py-10" style={{ maxWidth: 860 }}>
         <h1
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
-            fontSize: 30,
-            fontWeight: 500,
+            fontFamily: "var(--font-archivo, system-ui, sans-serif)",
+            fontSize: 44,
+            fontWeight: 800,
+            lineHeight: 1,
             letterSpacing: "-0.02em",
+            textTransform: "uppercase",
             color: "var(--text-strong)",
-            margin: "0 0 6px",
+            margin: "0 0 8px",
           }}
         >
           Your organizations
@@ -41,7 +43,7 @@ export default async function DashboardPage() {
         <p
           className="m-0 mb-8"
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
+            fontFamily: "var(--font-hanken, serif)",
             fontSize: 15,
             color: "var(--text-muted)",
           }}

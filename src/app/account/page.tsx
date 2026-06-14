@@ -22,10 +22,12 @@ export default async function AccountPage() {
       <div className="mx-auto w-full px-5 py-10" style={{ maxWidth: 640 }}>
         <h1
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
-            fontSize: 30,
-            fontWeight: 500,
+            fontFamily: "var(--font-archivo, system-ui, sans-serif)",
+            fontSize: 44,
+            fontWeight: 800,
+            lineHeight: 1,
             letterSpacing: "-0.02em",
+            textTransform: "uppercase",
             color: "var(--text-strong)",
             margin: "0 0 24px",
           }}

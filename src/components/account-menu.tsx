@@ -96,7 +96,7 @@ export function AccountMenu({ user }: { user: { name: string; email: string } })
             background: "var(--surface-card)",
             border: "1px solid var(--line-2)",
             borderRadius: 8,
-            boxShadow: "0 12px 32px oklch(0 0 0 / 0.5)",
+            boxShadow: "0 6px 18px rgba(21, 20, 15, 0.18)",
           }}
         >
           <div

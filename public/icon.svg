@@ -1,46 +1,10 @@
-<svg width="512" height="512" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent Tools Icon">
-  <style>
-    .bg {
-      fill: #0c0d0e;
-      transition: fill 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .brand-mark {
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    .cursor {
-      animation: blink 1.2s infinite steps(2);
-    }
-    svg:hover .brand-mark {
-      transform: scale(1.05);
-    }
-    svg:hover .bg {
-      fill: #050606;
-    }
-    svg:hover .anim-path {
-      stroke: #f4f6f5;
-    }
-    svg:hover .t {
-      stroke: #5fd089;
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges">
+  <!-- Ground: Concrete -->
+  <rect width="64" height="64" fill="#d6d4c8" />
 
-  <!-- Brutalist Container (Slightly rounded to fit modern UI frames, change rx="0" for raw sharp edges) -->
-  <rect class="bg" width="48" height="48" rx="8" />
-
-  <!-- Centered Monogram -->
-  <g class="brand-mark" transform-origin="24 24">
-    <!-- Outer 'A' Frame -->
-    <path class="anim-path" d="M 13 36 L 24 12 L 35 36" stroke="#5fd089" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
-
-    <!-- 'T' Nestled Under -->
-    <path class="t" d="M 18 24 L 30 24" stroke="#ffffff" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
-    <path class="t" d="M 24 24 L 24 36" stroke="#ffffff" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
-
-    <!-- Terminal Cursor Block -->
-    <rect class="cursor" x="22" y="16.5" width="4" height="4" fill="#f4f6f5" />
-  </g>
+  <!-- Mark: Signal (electric ultramarine) -->
+  <!-- Refined notched square body -->
+  <path d="M 12,12 H 52 V 40 H 40 V 52 H 12 Z" fill="#2018ff" />
+  <!-- Centered 4px precision signal dot -->
+  <rect x="44" y="44" width="4" height="4" fill="#2018ff" />
 </svg>

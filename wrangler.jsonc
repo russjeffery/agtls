@@ -111,6 +111,12 @@
 					"database_name": "agtls-db-preview",
 					"database_id": "8a4773b4-a92f-40bc-95ba-291a6e684ace",
 					"migrations_dir": "drizzle"
+				},
+				{
+					"binding": "agtls_db",
+					"database_name": "agtls-db-preview",
+					"database_id": "8a4773b4-a92f-40bc-95ba-291a6e684ace",
+					"remote": true
 				}
 			],
 			"triggers": {

@@ -1,41 +1,36 @@
-<svg width="240" height="48" viewBox="0 0 240 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent Tools">
-  <style>
-    .cursor {
-      animation: blink 1.2s infinite steps(2);
-    }
-    .brand-mark {
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    svg:hover .brand-mark {
-      transform: scale(1.05);
-    }
-    svg:hover .anim-path {
-      stroke: #f4f6f5;
-    }
-    svg:hover .t {
-      stroke: #5fd089;
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 352 80" width="352" height="80" shape-rendering="crispEdges">
+  <!-- Ground: Concrete -->
+  <rect width="352" height="80" fill="#d6d4c8" />
 
-  <!-- Icon / Monogram (Sharp Brutalist AT) -->
-  <g class="brand-mark" transform-origin="24 24">
-    <!-- Outer 'A' Frame - Razor-sharp Miter Joint -->
-    <path class="anim-path" d="M 13 36 L 24 12 L 35 36" stroke="#5fd089" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
+  <!-- Refined Logomark (Ink) -->
+  <path d="M 32,20 H 72 V 48 H 60 V 60 H 32 Z" fill="#15140f" />
+  <rect x="64" y="52" width="4" height="4" fill="#15140f" />
 
-    <!-- 'T' Nestled Under - Square Terminals -->
-    <path class="t" d="M 18 24 L 30 24" stroke="#fff" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
-    <path class="t" d="M 24 24 L 24 36" stroke="#fff" stroke-width="4" stroke-linecap="butt" stroke-linejoin="miter" />
+  <!-- Structural Rule: 2px (Ink) -->
+  <rect x="88" y="16" width="2" height="48" fill="#15140f" />
 
-    <!-- Sharp Terminal Cursor Block (Replaced Circle) -->
-    <!-- <rect class="cursor" x="22" y="16.5" width="4" height="4" fill="#f4f6f5" /> -->
+  <!-- Wordmark: agent tools (Ink) -->
+  <!-- Intended Typeface: Clean, Medium-Weight Retro-Tech Grotesque (lowercase, tracked out) -->
+  <g transform="translate(110, 9)" fill="#15140f">
+    <!-- a -->
+    <path d="M 0,28 H 16 V 18 H 20 V 42 H 0 Z M 4,32 H 16 V 38 H 4 Z" fill-rule="evenodd" />
+    <!-- g -->
+    <path d="M 24,18 H 44 V 46 H 24 V 38 H 28 V 42 H 40 V 34 H 24 Z M 28,22 H 40 V 30 H 28 Z" fill-rule="evenodd" />
+    <!-- e -->
+    <path d="M 48,18 H 68 V 32 H 52 V 38 H 68 V 42 H 48 Z M 52,22 H 64 V 28 H 52 Z" fill-rule="evenodd" />
+    <!-- n -->
+    <path d="M 72,18 H 92 V 42 H 88 V 22 H 76 V 42 H 72 Z" />
+    <!-- t -->
+    <path d="M 102,12 H 106 V 18 H 112 V 22 H 106 V 42 H 102 V 22 H 96 V 18 H 102 Z" />
+    <!-- t -->
+    <path d="M 134,12 H 138 V 18 H 144 V 22 H 138 V 42 H 134 V 22 H 128 V 18 H 134 Z" />
+    <!-- o -->
+    <path d="M 148,18 H 168 V 42 H 148 Z M 152,22 H 164 V 38 H 152 Z" fill-rule="evenodd" />
+    <!-- o -->
+    <path d="M 172,18 H 192 V 42 H 172 Z M 176,22 H 188 V 38 H 176 Z" fill-rule="evenodd" />
+    <!-- l -->
+    <path d="M 196,12 H 200 V 42 H 196 Z" />
+    <!-- s -->
+    <path d="M 204,18 H 222 V 22 H 208 V 28 H 222 V 42 H 204 V 38 H 218 V 32 H 204 Z" />
   </g>
-
-  <!-- Typography using Spline Sans Mono -->
-  <text x="58" y="30" font-family="'Spline Sans Mono', 'Fira Code', monospace" font-size="20" font-weight="700" letter-spacing="-0.8" fill="#f4f6f5">
-    agent<tspan fill="#5fd089">tools</tspan>
-  </text>
 </svg>

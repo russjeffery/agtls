@@ -18,7 +18,7 @@ export function ClaimAgentButton({ token }: { token: string }) {
       <div>
         <p
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
+            fontFamily: "var(--font-hanken, serif)",
             fontSize: 16,
             color: "var(--text-strong)",
             margin: "0 0 16px",
@@ -53,7 +53,7 @@ export function ClaimAgentButton({ token }: { token: string }) {
       {state && !state.ok ? (
         <p
           style={{
-            fontFamily: "var(--font-newsreader, serif)",
+            fontFamily: "var(--font-hanken, serif)",
             fontSize: 14,
             color: "var(--danger-400)",
             margin: "0 0 16px",

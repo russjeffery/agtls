@@ -3,7 +3,8 @@ import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 
 const mono = "var(--font-spline-mono, ui-monospace, monospace)";
-const serif = "var(--font-newsreader, serif)";
+const serif = "var(--font-hanken, sans-serif)";
+const display = "var(--font-archivo, system-ui, sans-serif)";
 
 export interface Crumb {
   label: string;
@@ -64,10 +65,12 @@ export function ResourceShell({
         <h1
           className="m-0 mb-1.5 flex flex-wrap items-center gap-2.5"
           style={{
-            fontFamily: serif,
-            fontSize: 30,
-            fontWeight: 500,
+            fontFamily: display,
+            fontSize: 44,
+            fontWeight: 800,
+            lineHeight: 1,
             letterSpacing: "-0.02em",
+            textTransform: "uppercase",
             color: "var(--text-strong)",
           }}
         >
