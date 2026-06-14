@@ -2,7 +2,7 @@
 
 # agtls
 
-Open-source infrastructure for AI agents. REST + MCP first.
+Open infrastructure for AI agents. REST + MCP first.
 
 ## Stack
 - Next.js 16 (App Router, TypeScript), deployed to Cloudflare Workers via `@opennextjs/cloudflare`

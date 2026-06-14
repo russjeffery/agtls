@@ -37,7 +37,7 @@ const hanken = Hanken_Grotesk({
 
 export const metadata: Metadata = {
   title: "agtls — Agent Tools",
-  description: "Open-source infrastructure for AI agents. REST and MCP tools for your agent to use right now.",
+  description: "Open infrastructure for AI agents. REST and MCP tools for your agent to use right now.",
   icons: {
     icon: "/icon.svg",
   },

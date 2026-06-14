@@ -33,6 +33,10 @@ const nextConfig: NextConfig = {
         source: "/skill.md",
         destination: "/api/discovery/agent-skill",
       },
+      {
+        source: "/.well-known/api-catalog",
+        destination: "/api/discovery/api-catalog",
+      },
     ];
   },
 };

@@ -8,9 +8,6 @@ const archivo = "var(--font-archivo, system-ui, sans-serif)";
 const mono = "var(--font-spline-mono, ui-monospace, monospace)";
 
 const navLinkStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "0 18px",
   borderLeft: "1px solid var(--line-1)",
   color: "var(--text-body)",
   textDecoration: "none",
@@ -41,9 +38,8 @@ export function AppHeader({
     >
       <Link
         href="/"
-        className="inline-flex items-center gap-2.5 no-underline"
+        className="inline-flex items-center gap-2.5 no-underline px-2.5 py-2 sm:px-[22px] sm:py-[15px]"
         style={{
-          padding: "15px 22px",
           borderRight: "2px solid var(--text-strong)",
           fontFamily: archivo,
           fontWeight: 800,
@@ -52,46 +48,54 @@ export function AppHeader({
           color: "var(--text-strong)",
         }}
       >
-        <Logo height={40} />
-        {/* <span
-          aria-hidden
-          style={{ width: 12, height: 12, background: "var(--ds-accent)" }}
-        />
-        AGTLS */}
+        <span className="inline-flex sm:hidden">
+          <Logo height={20} />
+        </span>
+        <span className="hidden sm:inline-flex">
+          <Logo height={40} />
+        </span>
       </Link>
 
-      <nav className="flex items-stretch ml-auto" style={{ fontFamily: mono }}>
+      <nav
+        className="flex min-w-0 items-stretch ml-auto"
+        style={{ fontFamily: mono }}
+      >
         <div
           className="flex items-stretch"
           style={{ borderLeft: "1px solid var(--line-1)" }}
         >
           <ToolsMenu />
         </div>
-        <Link style={navLinkStyle} href="/docs">
+        <Link
+          className="hidden items-center px-3 sm:inline-flex sm:px-[18px]"
+          style={navLinkStyle}
+          href="/docs"
+        >
           Docs
         </Link>
         <div
-          className="flex items-center"
-          style={{ padding: "0 16px", borderLeft: "2px solid var(--text-strong)" }}
+          className="flex items-center px-2 sm:px-4"
+          style={{ borderLeft: "2px solid var(--text-strong)" }}
         >
           {user ? (
             <AccountMenu user={user} />
           ) : (
             <a
               href="/sign-up"
-              className="inline-flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2.5 sm:px-3.5"
               style={{
                 color: "var(--text-on-accent)",
                 background: "var(--ds-accent)",
                 textDecoration: "none",
                 fontFamily: mono,
                 fontSize: 12,
-                letterSpacing: "0.1em",
+                letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                padding: "9px 14px",
               }}
             >
-              Get API key <ArrowRight size={13} />
+              <span className="sm:hidden">Get key</span>
+              <span className="hidden sm:inline">Get API key</span>
+              <ArrowRight size={13} />
             </a>
           )}
         </div>
