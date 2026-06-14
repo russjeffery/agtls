@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "../logo";
 
 /** Centered single-column chrome shared by the sign-in and sign-up pages. */
 export function AuthShell({
@@ -31,11 +32,7 @@ export function AuthShell({
           color: "var(--text-strong)",
         }}
       >
-        <span
-          aria-hidden
-          style={{ width: 12, height: 12, background: "var(--ds-accent)" }}
-        />
-        AGTLS
+        <Logo height={40} />
       </Link>
 
       <div

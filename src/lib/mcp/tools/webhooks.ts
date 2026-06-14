@@ -1,556 +1,247 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { eq, desc, and, count } from "drizzle-orm";
-import { beforeCursor } from "@/lib/api/cursor";
+import { eq, and, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { webhookEndpoint, webhookEvent } from "@/lib/db/schema";
-import { resolveAuth } from "@/lib/api/middleware";
 import { newId } from "@/lib/api/ids";
 import {
   serializeWebhookEndpoint,
   serializeWebhookEvent,
 } from "@/lib/api/serialize";
 import { mintResourceClaimToken } from "@/lib/api/claim";
+import type { AuthContext } from "@/lib/api/middleware";
+import {
+  getAuth,
+  mcpError,
+  mcpOk,
+  canAccess,
+  clampLimit,
+  paginatedList,
+} from "./shared";
 
-// ─── Auth helper ─────────────────────────────────────────────────────────────
-
-async function getAuth(apiKey?: string) {
-  if (!apiKey) return null;
-  const fakeRequest = new Request("https://localhost/", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  return resolveAuth(fakeRequest);
+// Loads an endpoint and checks access in one step. Returns either the row or an
+// mcpError envelope to return directly.
+async function loadEndpoint(
+  id: string,
+  auth: AuthContext | null
+): Promise<
+  | { ok: true; endpoint: typeof webhookEndpoint.$inferSelect }
+  | { ok: false; error: ReturnType<typeof mcpError> }
+> {
+  const [endpoint] = await db
+    .select()
+    .from(webhookEndpoint)
+    .where(eq(webhookEndpoint.id, id))
+    .limit(1);
+  if (!endpoint) {
+    return { ok: false, error: mcpError(`No webhook endpoint with ID '${id}' exists.`) };
+  }
+  if (!canAccess(endpoint.organizationId, auth?.organizationId)) {
+    return { ok: false, error: mcpError("You do not have access to this resource.") };
+  }
+  return { ok: true, endpoint };
 }
-
-// ─── Ownership check ─────────────────────────────────────────────────────────
-
-function canAccess(
-  endpoint: typeof webhookEndpoint.$inferSelect,
-  auth: { organizationId: string } | null
-): boolean {
-  if (endpoint.organizationId === null) return true;
-  if (!auth) return false;
-  return auth.organizationId === endpoint.organizationId;
-}
-
-// ─── Shared error text ────────────────────────────────────────────────────────
-
-function errorText(msg: string) {
-  return { content: [{ type: "text" as const, text: `Error: ${msg}` }], isError: true };
-}
-
-// ─── Tool registrations ───────────────────────────────────────────────────────
 
 export function webhookTools(server: McpServer): void {
-  // ── webhook_endpoints_list ──────────────────────────────────────────────────
+  // ── webhooks_read ─────────────────────────────────────────────────────────────
   server.tool(
-    "webhook_endpoints_list",
-    "List webhook endpoints. Returns endpoints owned by the authenticated organization, or public endpoints if no API key is provided.",
+    "webhooks_read",
+    "Read webhook endpoints and their captured events. With no `id`, lists your " +
+      "endpoints. With `id`, returns that endpoint (including its event count). " +
+      "With `id` + `event_id`, returns that single captured event. With `id` + " +
+      "`include_events: true`, returns the endpoint plus a page of its most recent " +
+      "events (honors `limit`/`after`).",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      limit: z.number().int().min(1).max(100).optional().default(20).describe("Number of results (1–100, default 20)."),
-      after: z.string().optional().describe("Cursor: ID of the last endpoint from the previous page."),
+      id: z.string().optional().describe("Endpoint ID (e.g. wh_...). Omit to list endpoints."),
+      event_id: z.string().optional().describe("Event ID (e.g. whe_...) to fetch a single captured event from the endpoint."),
+      include_events: z.boolean().optional().describe("When fetching an endpoint, also return a page of its recent events."),
+      limit: z.number().int().min(1).max(100).optional().describe("List size (1–100, default 20) for endpoint lists and event pages."),
+      after: z.string().optional().describe("List cursor: ID of the last item from the previous page."),
     },
-    async ({ api_key, limit = 20, after }) => {
-      let auth;
+    async (args, extra) => {
+      let auth: AuthContext | null;
       try {
-        auth = await getAuth(api_key);
+        auth = await getAuth(args.api_key, extra);
       } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
+        return mcpError(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      // Anonymous callers can't enumerate endpoints (mirrors GET /api/webhooks);
-      // public endpoints stay reachable by ID via webhook_endpoints_get.
-      if (!auth) {
-        const empty = { object: "list", data: [], has_more: false, next_cursor: null };
-        return { content: [{ type: "text" as const, text: JSON.stringify(empty, null, 2) }] };
-      }
-      const ownershipCondition = eq(webhookEndpoint.organizationId, auth.organizationId);
+      // ── single endpoint (and optionally its events) ──
+      if (args.id) {
+        const loaded = await loadEndpoint(args.id, auth);
+        if (!loaded.ok) return loaded.error;
 
-      let cursorCondition;
-      if (after) {
-        const cursor = await db
-          .select({ createdAt: webhookEndpoint.createdAt })
-          .from(webhookEndpoint)
-          .where(eq(webhookEndpoint.id, after))
-          .limit(1);
-        if (cursor.length > 0) {
-          cursorCondition = beforeCursor(
-            webhookEndpoint.createdAt,
-            webhookEndpoint.id,
-            cursor[0].createdAt,
-            after
-          );
+        // Single event under this endpoint
+        if (args.event_id) {
+          const [event] = await db
+            .select()
+            .from(webhookEvent)
+            .where(
+              and(
+                eq(webhookEvent.id, args.event_id),
+                eq(webhookEvent.endpointId, args.id)
+              )
+            )
+            .limit(1);
+          if (!event) return mcpError(`No webhook event with ID '${args.event_id}' exists.`);
+          return mcpOk(serializeWebhookEvent(event));
         }
+
+        const [{ value: eventCount }] = await db
+          .select({ value: count() })
+          .from(webhookEvent)
+          .where(eq(webhookEvent.endpointId, args.id));
+
+        const endpointData = serializeWebhookEndpoint(loaded.endpoint, eventCount);
+
+        // Fold in a page of events when requested (replaces webhook_events_list).
+        if (args.include_events) {
+          const events = await paginatedList({
+            table: webhookEvent,
+            timeColumn: webhookEvent.receivedAt,
+            idColumn: webhookEvent.id,
+            where: eq(webhookEvent.endpointId, args.id),
+            serialize: serializeWebhookEvent,
+            limit: clampLimit(args.limit),
+            after: args.after,
+          });
+          return mcpOk({ ...endpointData, events });
+        }
+
+        return mcpOk(endpointData);
       }
 
-      const conditions = cursorCondition
-        ? and(ownershipCondition, cursorCondition)
-        : ownershipCondition;
-
-      const rows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(conditions)
-        .orderBy(desc(webhookEndpoint.createdAt), desc(webhookEndpoint.id))
-        .limit(limit + 1);
-
-      const hasMore = rows.length > limit;
-      const data = rows.slice(0, limit).map((r) => serializeWebhookEndpoint(r));
-
-      const result = {
-        object: "list",
-        data,
-        has_more: hasMore,
-        next_cursor: hasMore ? data[data.length - 1].id : null,
-      };
-
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-    }
-  );
-
-  // ── webhook_endpoints_get ───────────────────────────────────────────────────
-  server.tool(
-    "webhook_endpoints_get",
-    "Get a single webhook endpoint by ID, including the count of stored events.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The webhook endpoint ID (e.g. wh_...)."),
-    },
-    async ({ api_key, id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
+      // ── list endpoints ──
+      // Anonymous callers can't enumerate (mirrors GET /api/webhooks);
+      // public endpoints stay reachable by ID above.
+      if (!auth) {
+        return mcpOk({ object: "list", data: [], has_more: false, next_cursor: null });
       }
 
-      const rows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, id))
-        .limit(1);
-
-      if (rows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${id}' exists.`);
-      }
-
-      const endpoint = rows[0];
-
-      if (!canAccess(endpoint, auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      const [{ value: eventCount }] = await db
-        .select({ value: count() })
-        .from(webhookEvent)
-        .where(eq(webhookEvent.endpointId, id));
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(serializeWebhookEndpoint(endpoint, eventCount), null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── webhook_endpoints_create ────────────────────────────────────────────────
-  server.tool(
-    "webhook_endpoints_create",
-    "Create a new webhook endpoint. Returns the endpoint object including the catch URL that agents or services should POST to.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      name: z.string().min(1).max(200).describe("Name for the endpoint."),
-      description: z.string().max(1000).optional().describe("Optional description."),
-      max_events: z.number().int().min(1).max(10000).optional().describe("Maximum events to retain (default 100)."),
-    },
-    async ({ api_key, name, description, max_events }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const id = newId("webhookEndpoint");
-      const now = new Date();
-
-      // Public creation gets a claim token usable later via the claim tool.
-      const claim = auth ? null : mintResourceClaimToken();
-
-      const [row] = await db
-        .insert(webhookEndpoint)
-        .values({
-          id,
-          organizationId: auth ? auth.organizationId : null,
-          name,
-          description: description ?? null,
-          maxEvents: max_events ?? null,
-          claimTokenHash: claim?.hash ?? null,
-          createdAt: now,
-          updatedAt: now,
+      return mcpOk(
+        await paginatedList({
+          table: webhookEndpoint,
+          timeColumn: webhookEndpoint.createdAt,
+          idColumn: webhookEndpoint.id,
+          where: eq(webhookEndpoint.organizationId, auth.organizationId),
+          serialize: (r: typeof webhookEndpoint.$inferSelect) => serializeWebhookEndpoint(r),
+          limit: clampLimit(args.limit),
+          after: args.after,
         })
-        .returning();
-
-      const data = claim
-        ? { ...serializeWebhookEndpoint(row), claim_token: claim.token }
-        : serializeWebhookEndpoint(row);
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
-      };
+      );
     }
   );
 
-  // ── webhook_endpoints_update ────────────────────────────────────────────────
+  // ── webhooks_write ────────────────────────────────────────────────────────────
   server.tool(
-    "webhook_endpoints_update",
-    "Update a webhook endpoint's name or description.",
+    "webhooks_write",
+    "Manage webhook endpoints and their captured events. Actions: `create` " +
+      "(requires `name`) returns the endpoint including the catch URL to POST to; " +
+      "`update`/`delete` act on an endpoint (`id`); `delete_event` removes one " +
+      "captured event (`id` + `event_id`); `clear_events` removes all events for an " +
+      "endpoint (`id`).",
     {
       api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The webhook endpoint ID."),
-      name: z.string().min(1).max(200).optional().describe("New name."),
-      description: z.string().max(1000).optional().nullable().describe("New description (null to clear)."),
-      max_events: z.number().int().min(1).max(10000).optional().nullable().describe("New max events limit (null to reset to default)."),
+      action: z
+        .enum(["create", "update", "delete", "delete_event", "clear_events"])
+        .describe("The operation to perform."),
+      id: z.string().optional().describe("Endpoint ID (required for everything except create)."),
+      event_id: z.string().optional().describe("Event ID (required for delete_event)."),
+      name: z.string().min(1).max(200).optional().describe("Endpoint name (required for create)."),
+      description: z.string().max(1000).nullable().optional().describe("Endpoint description (null to clear)."),
+      max_events: z.number().int().min(1).max(10000).nullable().optional().describe("Max events to retain (default 100; null to reset)."),
     },
-    async ({ api_key, id, name, description, max_events }) => {
-      let auth;
+    async (args, extra) => {
+      let auth: AuthContext | null;
       try {
-        auth = await getAuth(api_key);
+        auth = await getAuth(args.api_key, extra);
       } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
+        return mcpError(e instanceof Error ? e.message : "Invalid API key.");
       }
 
-      const rows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, id))
-        .limit(1);
+      // ── create endpoint ──
+      if (args.action === "create") {
+        if (!args.name) return mcpError("`name` is required to create a webhook endpoint.");
 
-      if (rows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${id}' exists.`);
+        const now = new Date();
+        const claim = auth ? null : mintResourceClaimToken();
+        const [row] = await db
+          .insert(webhookEndpoint)
+          .values({
+            id: newId("webhookEndpoint"),
+            organizationId: auth ? auth.organizationId : null,
+            name: args.name,
+            description: args.description ?? null,
+            maxEvents: args.max_events ?? null,
+            claimTokenHash: claim?.hash ?? null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+
+        return mcpOk(
+          claim
+            ? { ...serializeWebhookEndpoint(row), claim_token: claim.token }
+            : serializeWebhookEndpoint(row)
+        );
       }
 
-      if (!canAccess(rows[0], auth)) {
-        return errorText("You do not have access to this resource.");
+      // Everything else requires an existing, accessible endpoint.
+      if (!args.id) return mcpError(`\`id\` is required to ${args.action}.`);
+      const loaded = await loadEndpoint(args.id, auth);
+      if (!loaded.ok) return loaded.error;
+
+      // ── delete endpoint ──
+      if (args.action === "delete") {
+        await db.delete(webhookEvent).where(eq(webhookEvent.endpointId, args.id));
+        await db.delete(webhookEndpoint).where(eq(webhookEndpoint.id, args.id));
+        return mcpOk({ id: args.id, object: "webhook_endpoint", deleted: true });
       }
 
+      // ── clear all events ──
+      if (args.action === "clear_events") {
+        const [{ value: deletedCount }] = await db
+          .select({ value: count() })
+          .from(webhookEvent)
+          .where(eq(webhookEvent.endpointId, args.id));
+        await db.delete(webhookEvent).where(eq(webhookEvent.endpointId, args.id));
+        return mcpOk({ cleared: true, endpoint_id: args.id, events_deleted: deletedCount });
+      }
+
+      // ── delete a single event ──
+      if (args.action === "delete_event") {
+        if (!args.event_id) return mcpError("`event_id` is required to delete_event.");
+        const [event] = await db
+          .select({ id: webhookEvent.id })
+          .from(webhookEvent)
+          .where(
+            and(
+              eq(webhookEvent.id, args.event_id),
+              eq(webhookEvent.endpointId, args.id)
+            )
+          )
+          .limit(1);
+        if (!event) return mcpError(`No webhook event with ID '${args.event_id}' exists.`);
+        await db.delete(webhookEvent).where(eq(webhookEvent.id, args.event_id));
+        return mcpOk({ id: args.event_id, object: "webhook_event", deleted: true });
+      }
+
+      // ── update endpoint ──
       const updates: Partial<typeof webhookEndpoint.$inferInsert> = {
         updatedAt: new Date(),
       };
-      if (name !== undefined) updates.name = name;
-      if (description !== undefined) updates.description = description ?? null;
-      if (max_events !== undefined) updates.maxEvents = max_events ?? null;
+      if (args.name !== undefined) updates.name = args.name;
+      if (args.description !== undefined) updates.description = args.description ?? null;
+      if (args.max_events !== undefined) updates.maxEvents = args.max_events ?? null;
 
       const [updated] = await db
         .update(webhookEndpoint)
         .set(updates)
-        .where(eq(webhookEndpoint.id, id))
+        .where(eq(webhookEndpoint.id, args.id))
         .returning();
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(serializeWebhookEndpoint(updated), null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── webhook_endpoints_delete ────────────────────────────────────────────────
-  server.tool(
-    "webhook_endpoints_delete",
-    "Delete a webhook endpoint and all its captured events.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      id: z.string().describe("The webhook endpoint ID to delete."),
-    },
-    async ({ api_key, id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const rows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, id))
-        .limit(1);
-
-      if (rows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${id}' exists.`);
-      }
-
-      if (!canAccess(rows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      await db.delete(webhookEvent).where(eq(webhookEvent.endpointId, id));
-      await db.delete(webhookEndpoint).where(eq(webhookEndpoint.id, id));
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ deleted: true, id }, null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── webhook_events_list ─────────────────────────────────────────────────────
-  server.tool(
-    "webhook_events_list",
-    "List captured webhook events for an endpoint, most recent first.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      endpoint_id: z.string().describe("The webhook endpoint ID."),
-      limit: z.number().int().min(1).max(100).optional().default(20).describe("Number of results (1–100, default 20)."),
-      after: z.string().optional().describe("Cursor: ID of the last event from the previous page."),
-    },
-    async ({ api_key, endpoint_id, limit = 20, after }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const endpointRows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, endpoint_id))
-        .limit(1);
-
-      if (endpointRows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${endpoint_id}' exists.`);
-      }
-
-      if (!canAccess(endpointRows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      let cursorCondition;
-      if (after) {
-        const cursor = await db
-          .select({ receivedAt: webhookEvent.receivedAt })
-          .from(webhookEvent)
-          .where(eq(webhookEvent.id, after))
-          .limit(1);
-        if (cursor.length > 0) {
-          cursorCondition = beforeCursor(
-            webhookEvent.receivedAt,
-            webhookEvent.id,
-            cursor[0].receivedAt,
-            after
-          );
-        }
-      }
-
-      const baseCondition = eq(webhookEvent.endpointId, endpoint_id);
-      const conditions = cursorCondition
-        ? and(baseCondition, cursorCondition)
-        : baseCondition;
-
-      const rows = await db
-        .select()
-        .from(webhookEvent)
-        .where(conditions)
-        .orderBy(desc(webhookEvent.receivedAt), desc(webhookEvent.id))
-        .limit(limit + 1);
-
-      const hasMore = rows.length > limit;
-      const data = rows.slice(0, limit).map(serializeWebhookEvent);
-
-      const result = {
-        object: "list",
-        data,
-        has_more: hasMore,
-        next_cursor: hasMore ? data[data.length - 1].id : null,
-      };
-
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
-    }
-  );
-
-  // ── webhook_events_get ──────────────────────────────────────────────────────
-  server.tool(
-    "webhook_events_get",
-    "Get a single captured webhook event by ID.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      endpoint_id: z.string().describe("The webhook endpoint ID."),
-      event_id: z.string().describe("The webhook event ID (e.g. whe_...)."),
-    },
-    async ({ api_key, endpoint_id, event_id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const endpointRows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, endpoint_id))
-        .limit(1);
-
-      if (endpointRows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${endpoint_id}' exists.`);
-      }
-
-      if (!canAccess(endpointRows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      const rows = await db
-        .select()
-        .from(webhookEvent)
-        .where(
-          and(
-            eq(webhookEvent.id, event_id),
-            eq(webhookEvent.endpointId, endpoint_id)
-          )
-        )
-        .limit(1);
-
-      if (rows.length === 0) {
-        return errorText(`No webhook event with ID '${event_id}' exists.`);
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(serializeWebhookEvent(rows[0]), null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── webhook_events_delete ───────────────────────────────────────────────────
-  server.tool(
-    "webhook_events_delete",
-    "Delete a single captured webhook event.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      endpoint_id: z.string().describe("The webhook endpoint ID."),
-      event_id: z.string().describe("The webhook event ID to delete."),
-    },
-    async ({ api_key, endpoint_id, event_id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const endpointRows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, endpoint_id))
-        .limit(1);
-
-      if (endpointRows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${endpoint_id}' exists.`);
-      }
-
-      if (!canAccess(endpointRows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      const rows = await db
-        .select({ id: webhookEvent.id })
-        .from(webhookEvent)
-        .where(
-          and(
-            eq(webhookEvent.id, event_id),
-            eq(webhookEvent.endpointId, endpoint_id)
-          )
-        )
-        .limit(1);
-
-      if (rows.length === 0) {
-        return errorText(`No webhook event with ID '${event_id}' exists.`);
-      }
-
-      await db.delete(webhookEvent).where(eq(webhookEvent.id, event_id));
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ deleted: true, id: event_id }, null, 2),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── webhook_events_clear ────────────────────────────────────────────────────
-  server.tool(
-    "webhook_events_clear",
-    "Delete all captured webhook events for an endpoint.",
-    {
-      api_key: z.string().optional().describe("Optional API key for authentication."),
-      endpoint_id: z.string().describe("The webhook endpoint ID whose events to clear."),
-    },
-    async ({ api_key, endpoint_id }) => {
-      let auth;
-      try {
-        auth = await getAuth(api_key);
-      } catch (e: unknown) {
-        return errorText(e instanceof Error ? e.message : "Invalid API key.");
-      }
-
-      const endpointRows = await db
-        .select()
-        .from(webhookEndpoint)
-        .where(eq(webhookEndpoint.id, endpoint_id))
-        .limit(1);
-
-      if (endpointRows.length === 0) {
-        return errorText(`No webhook endpoint with ID '${endpoint_id}' exists.`);
-      }
-
-      if (!canAccess(endpointRows[0], auth)) {
-        return errorText("You do not have access to this resource.");
-      }
-
-      const [{ value: deletedCount }] = await db
-        .select({ value: count() })
-        .from(webhookEvent)
-        .where(eq(webhookEvent.endpointId, endpoint_id));
-
-      await db.delete(webhookEvent).where(eq(webhookEvent.endpointId, endpoint_id));
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              { cleared: true, endpoint_id, events_deleted: deletedCount },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+      return mcpOk(serializeWebhookEndpoint(updated));
     }
   );
 }

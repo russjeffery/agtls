@@ -32,13 +32,14 @@ dot-prefixed segments like `.well-known`).
 ## Endpoints
 
 - `POST /api/agent/auth` — register; dispatches on `type` / `assertion_type`
-- MCP `agent_register` tool — same registration over MCP, so an agent can get a
-  credential without leaving the MCP session (see `src/lib/mcp/tools/register.ts`)
+- MCP `agent_auth` tool (`action: register`) — same registration over MCP, so an
+  agent can get a credential without leaving the MCP session (see
+  `src/lib/mcp/tools/register.ts`)
 - `POST /api/agent/auth/claim` — start OTP claim (anonymous start only)
 - `POST /api/agent/auth/claim/complete` — finish claim, match/JIT the user
 - `POST /api/agent/auth/claim-link` — mint a fresh direct claim link for an
   authenticated, unclaimed anonymous credential (see below)
-- MCP `agent_request_claim_link` tool — same, over MCP
+- MCP `agent_auth` tool (`action: request_claim_link`) — same, over MCP
 - `POST /api/agent/auth/revoke` — back-channel revocation (`application/logout+jwt`)
 - `GET /agent/claim/[token]` — server-rendered OTP page the claim email links to
 - `GET /agent/link/[token]` — server-rendered direct claim page (below)
@@ -52,7 +53,7 @@ reads a code *back* to the agent; here the human's own browser **session** is
 the authorization.
 
 - Anonymous registration (`POST /api/agent/auth` `{ "type": "anonymous" }`, and
-  the `agent_register` MCP tool) returns a **`claim_link`** —
+  the `agent_auth` MCP tool with `action: register`) returns a **`claim_link`** —
   `${APP_URL}/agent/link/{cvt_…}` — alongside the credential. The `cvt_` view
   token in the URL is distinct from the agent's `clm_` `claim_token`, so the
   agent shares the link without exposing its own completion secret.
@@ -66,8 +67,9 @@ the authorization.
 - `getDirectClaimView` renders the page read-only (mints nothing), so link
   prefetchers can't consume or alter the claim. Only unclaimed, unexpired
   `anonymous` registrations are claimable this way.
-- `agent_request_claim_link` / `POST /api/agent/auth/claim-link` re-mint a fresh
-  link for an already-registered agent that lost the original or let it expire.
+- `agent_auth` (`action: request_claim_link`) / `POST /api/agent/auth/claim-link`
+  re-mint a fresh link for an already-registered agent that lost the original or
+  let it expire.
 
 ## Credentials & principals
 

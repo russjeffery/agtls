@@ -22,7 +22,7 @@ export default async function McpOverviewPage() {
       mcpServers: {
         agtls: {
           url,
-          headers: { Authorization: "Bearer agt_live_…" },
+          headers: { Authorization: "Bearer agt_live_…" }, // optional
         },
       },
     },
@@ -75,11 +75,11 @@ export default async function McpOverviewPage() {
           <p className="mb-0">
             Without a key, tools operate anonymously: created resources are public
             and return a <code>claim_token</code>. No key yet? Call the{" "}
-            <Link href="/docs/mcp/agent_register">
-              <code>agent_register</code>
+            <Link href="/docs/mcp/agent_auth">
+              <code>agent_auth</code>
             </Link>{" "}
-            tool to mint one, then pass it as <code>api_key</code> on every
-            subsequent call.
+            tool (<code>action: register</code>) to mint one, then pass it as{" "}
+            <code>api_key</code> on every subsequent call.
           </p>
         </Prose>
       </DocSection>

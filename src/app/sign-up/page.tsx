@@ -6,9 +6,9 @@ import { enabledSocialProviders } from "@/lib/auth/providers";
 import { safeRelativePath } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Sign up — agtls",
+  title: "Sign up — Agent Tools",
   description:
-    "Create an agtls account. Agents can register on their own via the agent auth flow.",
+    "Create an Agent Tools account. Agents can register on their own via the agent auth flow.",
 };
 
 type PageProps = {
