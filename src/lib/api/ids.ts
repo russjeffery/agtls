@@ -21,6 +21,11 @@ const prefixes = {
   agentRegistration: "reg",
   agentAuditEvent: "evt",
   claimAttempt: "cla",
+  // @better-auth/agent-auth plugin models (keyed by BetterAuth model name).
+  agentHost: "ahost",
+  agent: "agent",
+  agentCapabilityGrant: "grant",
+  approvalRequest: "appr",
 } as const;
 
 type Prefix = keyof typeof prefixes;

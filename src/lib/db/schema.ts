@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
 // D1 is SQLite, so rich Postgres types are encoded onto SQLite's storage
 // classes: timestamps are integer epoch-milliseconds (mode "timestamp_ms"
@@ -368,3 +368,145 @@ export const scheduledMessage = sqliteTable("scheduled_message", {
   createdAt: createdNow(),
   updatedAt: updatedNow(),
 });
+
+// ─── Agent Auth Protocol (@better-auth/agent-auth) ───────────────────────────
+//
+// A second, parallel agent-auth surface alongside the hand-rolled ID-JAG/claim
+// system above. These four tables mirror the schema the @better-auth/agent-auth
+// plugin declares (see node_modules/@better-auth/agent-auth `agentSchema`).
+// Property keys are the plugin's camelCase field names (BetterAuth indexes the
+// Drizzle table by field name); column names are snake_case to match house
+// style. JSON-valued fields (defaultCapabilities, metadata, constraints,
+// capabilities) are plain text columns — the plugin serializes/parses them
+// itself, so they are NOT `mode: "json"`. The drizzleAdapter `schema` map keys
+// these by model name: agentHost, agent, agentCapabilityGrant, approvalRequest.
+
+// A host is the calling platform/integration an agent belongs to. Claimed by a
+// human (userId) through the device-authorization approval flow.
+export const agentHost = sqliteTable(
+  "agent_host",
+  {
+    id: text("id").primaryKey(), // newId, prefix "ahost"
+    name: text("name"),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    // JSON-encoded string[] of capability names auto-granted to this host.
+    defaultCapabilities: text("default_capabilities"),
+    publicKey: text("public_key"),
+    kid: text("kid"),
+    jwksUrl: text("jwks_url"),
+    enrollmentTokenHash: text("enrollment_token_hash"),
+    enrollmentTokenExpiresAt: timestamp("enrollment_token_expires_at"),
+    status: text("status").notNull().default("active"),
+    activatedAt: timestamp("activated_at"),
+    expiresAt: timestamp("expires_at"),
+    lastUsedAt: timestamp("last_used_at"),
+    createdAt: createdNow(),
+    updatedAt: updatedNow(),
+  },
+  (t) => [
+    index("agent_host_user_id_idx").on(t.userId),
+    index("agent_host_kid_idx").on(t.kid),
+    index("agent_host_enrollment_token_hash_idx").on(t.enrollmentTokenHash),
+    index("agent_host_status_idx").on(t.status),
+  ]
+);
+
+// An individual agent identity, bound to a host. publicKey verifies the
+// short-lived JWTs the agent signs when invoking capabilities.
+export const agent = sqliteTable(
+  "agent",
+  {
+    id: text("id").primaryKey(), // newId, prefix "agent"
+    name: text("name").notNull(),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => agentHost.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("active"),
+    mode: text("mode").notNull().default("delegated"),
+    publicKey: text("public_key").notNull(),
+    kid: text("kid"),
+    jwksUrl: text("jwks_url"),
+    lastUsedAt: timestamp("last_used_at"),
+    activatedAt: timestamp("activated_at"),
+    expiresAt: timestamp("expires_at"),
+    // JSON-encoded arbitrary metadata.
+    metadata: text("metadata"),
+    createdAt: createdNow(),
+    updatedAt: updatedNow(),
+  },
+  (t) => [
+    index("agent_user_id_idx").on(t.userId),
+    index("agent_host_id_idx").on(t.hostId),
+    index("agent_status_idx").on(t.status),
+    index("agent_kid_idx").on(t.kid),
+  ]
+);
+
+// A grant authorizing one agent to invoke one capability, optionally with
+// JSON-encoded constraints. status moves pending → active/denied/revoked.
+export const agentCapabilityGrant = sqliteTable(
+  "agent_capability_grant",
+  {
+    id: text("id").primaryKey(), // newId, prefix "grant"
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agent.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+    deniedBy: text("denied_by").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    grantedBy: text("granted_by").references(() => user.id, {
+      onDelete: "cascade",
+    }),
+    expiresAt: timestamp("expires_at"),
+    createdAt: createdNow(),
+    updatedAt: updatedNow(),
+    status: text("status").notNull().default("active"),
+    reason: text("reason"),
+    constraints: text("constraints"),
+  },
+  (t) => [
+    index("agent_capability_grant_agent_id_idx").on(t.agentId),
+    index("agent_capability_grant_capability_idx").on(t.capability),
+    index("agent_capability_grant_granted_by_idx").on(t.grantedBy),
+    index("agent_capability_grant_status_idx").on(t.status),
+  ]
+);
+
+// A pending approval (device-authorization or CIBA) a human resolves to
+// approve or deny an agent's requested capabilities.
+export const approvalRequest = sqliteTable(
+  "approval_request",
+  {
+    id: text("id").primaryKey(), // newId, prefix "appr"
+    method: text("method").notNull(),
+    agentId: text("agent_id").references(() => agent.id, {
+      onDelete: "cascade",
+    }),
+    hostId: text("host_id").references(() => agentHost.id, {
+      onDelete: "cascade",
+    }),
+    userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+    // JSON-encoded string[] of requested capability names.
+    capabilities: text("capabilities"),
+    status: text("status").notNull().default("pending"),
+    userCodeHash: text("user_code_hash"),
+    loginHint: text("login_hint"),
+    bindingMessage: text("binding_message"),
+    clientNotificationToken: text("client_notification_token"),
+    clientNotificationEndpoint: text("client_notification_endpoint"),
+    deliveryMode: text("delivery_mode"),
+    interval: integer("interval").notNull(),
+    lastPolledAt: timestamp("last_polled_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: createdNow(),
+    updatedAt: updatedNow(),
+  },
+  (t) => [
+    index("approval_request_agent_id_idx").on(t.agentId),
+    index("approval_request_host_id_idx").on(t.hostId),
+    index("approval_request_user_id_idx").on(t.userId),
+    index("approval_request_status_idx").on(t.status),
+  ]
+);

@@ -6,6 +6,19 @@ import * as schema from "@/lib/db/schema";
 import { newId, newUserId } from "@/lib/api/ids";
 import { sendEmail } from "@/lib/email";
 import { createOrgWithOwner } from "@/lib/orgs/service";
+import { agentAuthPlugin } from "@/lib/agent-auth/openapi-plugin";
+
+// BetterAuth model name → our `newId` prefix key, for models we want prefixed
+// ids on. Anything not listed falls through to an opaque user-style id.
+const ID_PREFIXED_MODELS = {
+  organization: "organization",
+  member: "member",
+  invitation: "invitation",
+  agentHost: "agentHost",
+  agent: "agent",
+  agentCapabilityGrant: "agentCapabilityGrant",
+  approvalRequest: "approvalRequest",
+} as const;
 
 // Social sign-in is enabled per-provider by env. Leaving a provider's
 // credentials unset simply hides that button — email/password always works.
@@ -37,23 +50,25 @@ export const auth = betterAuth({
       organization: schema.organization,
       member: schema.member,
       invitation: schema.invitation,
+      // @better-auth/agent-auth plugin tables (keyed by model name).
+      agentHost: schema.agentHost,
+      agent: schema.agent,
+      agentCapabilityGrant: schema.agentCapabilityGrant,
+      approvalRequest: schema.approvalRequest,
     },
   }),
   advanced: {
     database: {
-      // Global across all models — prefix org-plugin rows like our own IDs,
-      // fall through to an opaque id for user/session/etc.
-      generateId: ({ model }) =>
-        model === "organization"
-          ? newId("organization")
-          : model === "member"
-            ? newId("member")
-            : model === "invitation"
-              ? newId("invitation")
-              : newUserId(),
+      // Global across all models — prefix org-plugin and agent-auth rows like
+      // our own IDs, fall through to an opaque id for user/session/etc.
+      generateId: ({ model }) => {
+        const prefix =
+          ID_PREFIXED_MODELS[model as keyof typeof ID_PREFIXED_MODELS];
+        return prefix ? newId(prefix) : newUserId();
+      },
     },
   },
-  plugins: [organization({ creatorRole: "owner" })],
+  plugins: [organization({ creatorRole: "owner" }), agentAuthPlugin()],
   databaseHooks: {
     user: {
       create: {
