@@ -376,7 +376,7 @@ export const securitySchemes: Record<string, JSONSchema> = {
     type: "http",
     scheme: "bearer",
     description:
-      "Optional API key (e.g. `agt_live_…`) passed as `Authorization: Bearer <key>`. " +
+      "Optional API key (e.g. `agt_…`) passed as `Authorization: Bearer <key>`. " +
       "Without a key, resources are created public and reachable by ID; with a key, they are owned by the key's organization.",
   },
 };

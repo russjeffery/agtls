@@ -22,7 +22,7 @@ export default async function McpOverviewPage() {
       mcpServers: {
         agtls: {
           url,
-          headers: { Authorization: "Bearer agt_live_…" }, // optional
+          headers: { Authorization: "Bearer agt_…" }, // optional
         },
       },
     },
@@ -65,7 +65,7 @@ export default async function McpOverviewPage() {
           </p>
           <ul style={{ paddingLeft: 18, margin: "0 0 12px" }}>
             <li style={{ marginBottom: 6 }}>
-              Send an <code>Authorization: Bearer agt_live_…</code> header on the
+              Send an <code>Authorization: Bearer agt_…</code> header on the
               MCP connection, or
             </li>
             <li>

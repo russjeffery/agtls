@@ -28,7 +28,7 @@ function exampleArguments(schema: JSONSchema): Record<string, unknown> {
   const props = (schema.properties as Record<string, JSONSchema>) ?? {};
   const required = new Set((schema.required as string[] | undefined) ?? []);
   const out: Record<string, unknown> = {};
-  if ("api_key" in props) out.api_key = "agt_live_…";
+  if ("api_key" in props) out.api_key = "agt_…";
   for (const [name, prop] of Object.entries(props)) {
     if (name === "api_key" || !required.has(name)) continue;
     out[name] = placeholder(name, prop);

@@ -26,6 +26,10 @@ const nextConfig: NextConfig = {
         destination: "/api/discovery/authorization-server",
       },
       {
+        source: "/agents.md",
+        destination: "/api/discovery/agents-md",
+      },
+      {
         source: "/auth.md",
         destination: "/api/discovery/auth-md",
       },

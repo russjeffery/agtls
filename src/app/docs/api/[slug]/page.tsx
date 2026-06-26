@@ -112,7 +112,7 @@ export default async function ApiEndpointPage({
   const queryParams = op.parameters.filter((p) => p.in === "query");
 
   // A minimal, copy-pasteable curl. Path params are left as :placeholders.
-  const authLine = op.public ? "" : ` \\\n  -H "Authorization: Bearer agt_live_…"`;
+  const authLine = op.public ? "" : ` \\\n  -H "Authorization: Bearer agt_…"`;
   const bodyLine = op.requestSchema ? ` \\\n  -H "Content-Type: application/json" \\\n  -d '{ … }'` : "";
   const methodFlag = op.method === "get" ? "" : ` -X ${op.method.toUpperCase()}`;
   const curl = `curl${methodFlag} ${base}${op.path}${authLine}${bodyLine}`;

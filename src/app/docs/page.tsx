@@ -102,7 +102,7 @@ export default function DocsHomePage() {
           <p className="m-0">
             Pass an API key as{" "}
             <code style={{ fontFamily: mono, fontSize: 13.5 }}>
-              Authorization: Bearer agt_live_…
+              Authorization: Bearer agt_…
             </code>{" "}
             to own resources under your organization. Omit it and resources are
             created public — the create response returns a one-time{" "}

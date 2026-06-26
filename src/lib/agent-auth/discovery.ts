@@ -8,7 +8,7 @@ import {
   prmUrl,
 } from "./config";
 
-const SERVICE_NAME = "agtls";
+const SERVICE_NAME = "Agent Tools";
 const REVOKED_EVENT =
   "https://schemas.workos.com/events/agent/auth/identity/assertion/revoked";
 
@@ -120,6 +120,67 @@ export function authorizationServerMetadata() {
   };
 }
 
+// Root entry point — the first thing an agent should read at the origin. Gives
+// a one-paragraph orientation, the MCP endpoint and its tools, and points at
+// auth.md for credentials. Served at /agents.md.
+export function agentsMarkdown(): string {
+  const base = origin();
+  const mcpUrl = `${base}/api/mcp`;
+  return `# ${SERVICE_NAME}
+
+${SERVICE_NAME} (${base}) is free, open infrastructure for AI agents: task
+lists, durable shared files, scheduled wake-ups, and inbound webhook catchers,
+exposed over both a REST API and an MCP server. No human, signup, or API key is
+required to start — every tool works unauthenticated (resources you create are
+public), and you can issue yourself a credential later to save your work to an
+account. See \`${base}/auth.md\` to register or authenticate.
+
+## MCP server
+
+Connect over streamable HTTP:
+
+\`\`\`
+${mcpUrl}
+\`\`\`
+
+Pass your credential, if you have one, as \`Authorization: Bearer <agt_…>\`.
+Without it you can still call every tool — your resources are just public until
+claimed. You can also obtain a credential entirely over MCP: call \`agent_auth\`
+with \`action: register\`, save the returned \`credential\`, and pass it as the
+\`api_key\` argument on every later call.
+
+### Tools
+
+- **Tasks** — \`tasks_read\`, \`tasks_write\`: a shared task list. Create, update,
+  delete, and list tasks with names, priorities, labels, and due dates.
+- **Artifacts** — \`artifact_read\`, \`artifact_write\`: durable shared files
+  (markdown or HTML). Create, update, delete, and read full content — useful as
+  scratch state or output you and other agents can pass around.
+- **Messages** — \`messages_read\`, \`messages_write\`: scheduled wake-ups. Fire an
+  HTTP request at a URL at a future time so an agent can be called back later.
+- **Webhooks** — \`webhooks_read\`, \`webhooks_write\`: inbound webhook catchers.
+  Create an endpoint, hand out its catch URL, and read back everything POSTed
+  to it.
+- **agent_auth** — get or recover your own credential (\`action: register\` /
+  \`request_claim_link\`).
+- **claim** — take ownership of a publicly-created resource using the
+  \`claim_token\` returned when it was made (needs a credential).
+
+## REST API
+
+The same tools are a typed JSON API under \`${base}/api\` (e.g.
+\`POST ${base}/api/tasks\`). See the OpenAPI definition at
+\`${base}/api/openapi.json\` and the full agent runbook at \`${base}/skill.md\`.
+
+## Authenticating
+
+\`${base}/auth.md\` is the step-by-step credential runbook: register anonymously
+for a read-only key immediately, register with your operator's email for a
+full-scope key, or present an ID-JAG if you run on a trusted platform. You can
+bind anonymous work to a human's account afterward.
+`;
+}
+
 // Prose discovery doc — the human/LLM-friendly companion to the PRM. Written as
 // a step-by-step runbook an agent can follow end to end.
 export function authMarkdown(): string {
@@ -128,7 +189,7 @@ export function authMarkdown(): string {
   const asDoc = `${base}/.well-known/oauth-authorization-server`;
   return `# ${SERVICE_NAME} — Agent Registration
 
-You are an agent. ${SERVICE_NAME} is free, open infrastructure for AI agents —
+${SERVICE_NAME} is free, open tools for AI agents —
 task lists, inbound webhook catchers, and durable shared state, exposed over
 REST and MCP. This document tells you how to get a credential and authenticate,
 on your own or on behalf of a user.
@@ -413,7 +474,7 @@ description: Authenticate with ${SERVICE_NAME} on your own and use its agent inf
 
 # Using ${SERVICE_NAME} as an agent
 
-${SERVICE_NAME} (${base}) is open-source infrastructure for AI agents. You do
+${SERVICE_NAME} (${base}) is open tools for AI agents. You do
 not need a human to sign up: you can issue your own credential, work
 immediately, and attach your work to a human's account later.
 

@@ -12,7 +12,7 @@ defined in `src/lib/openapi/components.ts` to mirror the serializers. When you a
 change a core-resource endpoint, update `src/lib/openapi/paths.ts` to match.
 
 ## Authentication
-- Pass `Authorization: Bearer agt_live_<key>` or `Authorization: Bearer agt_test_<key>`
+- Pass `Authorization: Bearer agt_<key>`
 - Auth is **optional** — unauthenticated requests work but resources are public (no owning organization)
 - `resolveAuth(request)` from `@/lib/api/middleware` returns `AuthContext | null`
 - If auth header is present but invalid, return 401
@@ -130,7 +130,7 @@ ownership:
 
 ```
 POST /api/claim/{id}
-Authorization: Bearer agt_live_...
+Authorization: Bearer agt_...
 {"claim_token": "clm_..."}
 ```
 

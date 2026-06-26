@@ -59,7 +59,7 @@ describe("buildOpenApiDocument", () => {
   it("is an OpenAPI 3.1 document", () => {
     expect(doc.openapi).toBe("3.1.0");
     const info = doc.info as { title: string; version: string };
-    expect(info.title).toBe("agtls API");
+    expect(info.title).toBe("Agent Tools API");
     expect(info.version).toBe(pkg.version);
   });
 

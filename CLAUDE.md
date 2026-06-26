@@ -15,7 +15,7 @@ OpenNext handler and its `scheduled` handler hits `/api/messages/dispatch`.
 
 ## Auth model
 API key auth is **optional**. `resolveAuth(request)` in `src/lib/api/middleware.ts` returns `AuthContext | null`.
-- Authenticated (Bearer `agt_live_*`): resource is organization-owned
+- Authenticated (Bearer `agt_*`): resource is organization-owned
 - Unauthenticated: resource is public (anyone with the ID can read/write)
 
 Humans and agents are both org **members** (agents are JIT-provisioned users), so a signed-in human sees every agent with access to their resources on `/dashboard`. Org helpers: `src/lib/orgs/`.

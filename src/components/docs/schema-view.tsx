@@ -1,73 +1,11 @@
-import { resolveSchemaRef, refName, type JSONSchema } from "@/lib/docs/api-catalog";
+import { resolveSchemaRef, type JSONSchema } from "@/lib/docs/api-catalog";
+import { flatten, typeLabel, expandable } from "@/lib/docs/schema-shape";
 
 const mono = "var(--font-spline-mono, ui-monospace, monospace)";
 
-// ─── Schema normalization ──────────────────────────────────────────────────
-
-// Merge an allOf chain (resolving member $refs) into a single object schema,
-// preserving any sibling `properties` declared alongside the allOf. This is the
-// shape the *CreateResponse schemas use (resource allOf + extra claim fields).
-function flatten(schema: JSONSchema): JSONSchema {
-  if (!Array.isArray(schema.allOf)) return schema;
-  const merged: JSONSchema = { type: "object", properties: {}, required: [] };
-  const props = merged.properties as Record<string, JSONSchema>;
-  const required = merged.required as string[];
-
-  const absorb = (s: JSONSchema) => {
-    const resolved = typeof s.$ref === "string" ? resolveSchemaRef(s.$ref) : s;
-    const flat = flatten(resolved);
-    Object.assign(props, (flat.properties as Record<string, JSONSchema>) ?? {});
-    if (Array.isArray(flat.required)) required.push(...(flat.required as string[]));
-  };
-
-  for (const member of schema.allOf as JSONSchema[]) absorb(member);
-  Object.assign(props, (schema.properties as Record<string, JSONSchema>) ?? {});
-  if (Array.isArray(schema.required)) required.push(...(schema.required as string[]));
-  return merged;
-}
-
-// A short, human-readable type label for a property schema.
-function typeLabel(schema: JSONSchema): string {
-  if (typeof schema.$ref === "string") return refName(schema.$ref);
-
-  if (schema.const !== undefined) return JSON.stringify(schema.const);
-
-  if (Array.isArray(schema.enum)) {
-    return (schema.enum as unknown[]).map((v) => JSON.stringify(v)).join(" | ");
-  }
-
-  if (Array.isArray(schema.oneOf)) {
-    return (schema.oneOf as JSONSchema[]).map(typeLabel).join(" | ");
-  }
-
-  const t = schema.type;
-  if (Array.isArray(t)) return (t as string[]).join(" | ");
-
-  if (t === "array") {
-    const items = schema.items as JSONSchema | undefined;
-    return items ? `${typeLabel(items)}[]` : "array";
-  }
-
-  return typeof t === "string" ? t : "object";
-}
-
-// Does this property expand into a nested object table?
-function expandable(schema: JSONSchema): JSONSchema | null {
-  const s = typeof schema.$ref === "string" ? resolveSchemaRef(schema.$ref) : schema;
-  const flat = flatten(s);
-  if (flat.properties && Object.keys(flat.properties).length) return flat;
-  if (flat.type === "array") {
-    const items = flat.items as JSONSchema | undefined;
-    if (items) {
-      const inner =
-        typeof items.$ref === "string" ? resolveSchemaRef(items.$ref) : items;
-      const flatInner = flatten(inner);
-      if (flatInner.properties && Object.keys(flatInner.properties).length)
-        return flatInner;
-    }
-  }
-  return null;
-}
+// Schema shaping (flatten / typeLabel / expandable) lives in schema-shape.ts so
+// the plain-text /llms-full.txt renderer shares it. This file is the visual
+// (datasheet-table) renderer.
 
 // ─── Rendering ─────────────────────────────────────────────────────────────
 

@@ -21,7 +21,7 @@ export default function ApiOverviewPage() {
       <DocHeader
         eyebrow="REST API"
         title="REST API reference"
-        lead="HTTP + JSON over a single base URL. API key auth is optional — without a key, resources are created public and reachable by ID; with an agt_live_… key they're owned by the key's organization."
+        lead="HTTP + JSON over a single base URL. API key auth is optional — without a key, resources are created public and reachable by ID; with an agt_… key they're owned by the key's organization."
       />
 
       <DocSection title="Authentication">
@@ -34,7 +34,7 @@ export default function ApiOverviewPage() {
         <CodeBlock
           lang="text"
           caption="Authorization header"
-          code={`Authorization: Bearer agt_live_xxxxxxxxxxxxxxxxxxxxxxxx`}
+          code={`Authorization: Bearer agt_xxxxxxxxxxxxxxxxxxxxxxxx`}
         />
       </DocSection>
 

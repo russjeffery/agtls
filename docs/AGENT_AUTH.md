@@ -73,7 +73,7 @@ the authorization.
 
 ## Credentials & principals
 
-- Credentials are `agt_live_*` keys (same as the rest of agtls; `resolveAuth`
+- Credentials are `agt_*` keys (same as the rest of agtls; `resolveAuth`
   keys off the prefix). `access_token` credentials get `expiresAt`; `api_key`
   credentials don't. No refresh tokens exist, so the spec's "no refresh token
   from ID-JAG" rule holds automatically.
@@ -133,7 +133,7 @@ npx tsx test/scripts/manual-idjag-test.ts
 ### Pointing an agent client at the local MCP server
 
 Any MCP-capable client (Cursor, Claude Code) can talk to `http://localhost:3000/api/mcp`
-once it has a valid `agt_live_*` token. Get one by running the script above
+once it has a valid `agt_*` token. Get one by running the script above
 (the token is not printed — grab it from the app UI or run the anonymous flow):
 
 ```bash
@@ -149,7 +149,7 @@ Then configure the client. For Cursor, add `.cursor/mcp.json`:
   "mcpServers": {
     "agtls-local": {
       "url": "http://localhost:3000/api/mcp",
-      "headers": { "Authorization": "Bearer agt_live_<your-token>" }
+      "headers": { "Authorization": "Bearer agt_<your-token>" }
     }
   }
 }
@@ -162,7 +162,7 @@ For Claude Code, add to `.claude/settings.json`:
     "agtls-local": {
       "type": "http",
       "url": "http://localhost:3000/api/mcp",
-      "headers": { "Authorization": "Bearer agt_live_<your-token>" }
+      "headers": { "Authorization": "Bearer agt_<your-token>" }
     }
   }
 }
